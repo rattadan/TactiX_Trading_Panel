@@ -1,4 +1,4 @@
-# PineTS Strategies & Indicators
+Strategies & Indicators
 
 This folder contains the Pine Script strategies and indicators that power the
 charting / backtesting engine in this app 
@@ -16,7 +16,7 @@ a share of usage / subscription fees flows back to you.
    ```pine
    // @title: My Awesome Indicator
    // @author: YourName
-   // @reward_address: inj1yourinjectiveaddresshere...
+   // @reward_address: 0xABCDEF1234....
    // @reward_bps: 500   // optional, e.g. 5% of attributable fees
    ```
 

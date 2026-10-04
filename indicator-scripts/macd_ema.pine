@@ -1,0 +1,49 @@
+//@version=5
+// @title: MACD Crossover Entry, EMA Exit
+// @description: Classic momentum strategy entering on MACD, but exit triggered by EMA 3/27 crossing.
+strategy("MACD-EMA Crossover Strategy", "MACD-EMA", true)
+// Live indicators
+macdFast = input.int(18, "MACD Fast", minval=1)
+macdSlow = input.int(44, "MACD Slow", minval=1)
+macdSignal = input.int(21, "MACD Signal", minval=1)
+rsiPeriod = input.int(18, "RSI Period", minval=1)
+stochPeriod = input.int(18, "Stoch Period", minval=1)
+stochKSmooth = input.int(4, "Stoch %K", minval=1)
+stochDSmooth = input.int(4, "Stoch %D", minval=1)
+
+// --- MACD Calculation ---
+[macd_line, signal_line, hist] = ta.macd(close, macdFast, macdSlow, macdSignal)
+
+// --- RSI Calculation for Exit unused ---
+rsi = ta.rsi(close, rsiPeriod)
+
+// --- EMA 3 ---
+ema3 = ta.ema(close, 3)
+
+// --- EMA 27 ---
+ema27 = ta.ema(close, 27)
+
+// --- Entry/Exit Conditions ---
+long_condition = ta.crossover(macd_line, signal_line)
+short_condition = ta.crossunder(macd_line, signal_line)
+long_exit = ta.crossover(ema3, ema27)
+short_exit = ta.crossover(ema3, ema27)
+
+// --- Plotting the MACD and EMAs ---
+plot(macd_line, "MACD Line", color=color.new(color.blue, 0))
+plot(signal_line, "Signal Line", color=color.new(color.red, 0))
+plot(ema3, "EMA 3", color=color.new(color.orange, 0))
+plot(ema27, "EMA 27", color=color.new(color.purple, 0))
+
+// --- Strategy Execution ---
+if (long_condition)
+    strategy.entry("Long", strategy.long)
+
+if (short_condition)
+    strategy.entry("Short", strategy.short)
+
+if (strategy.position_size > 0 and long_exit)
+    strategy.close("Long")
+
+if (strategy.position_size < 0 and short_exit)
+    strategy.close("Short")

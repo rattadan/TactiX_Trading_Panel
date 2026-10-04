@@ -1,0 +1,900 @@
+//@version=6
+// @title: PRECISION SNIPER [WillyAlgoTrader]
+// @description: 2.1.0
+// ══════════════════════════════════════════════════════════
+// PRECISION SNIPER [WillyAlgoTrader]
+// ══════════════════════════════════════════════════════════
+// Author:  Willy | WillyAlgoTrader
+// Version: 2.1.0
+
+indicator("Precision Sniper [WillyAlgoTrader]", "PrecSniper", overlay = true, max_labels_count = 500, max_lines_count = 30)
+
+const string VERSION = "2.1.0"
+// Fixed model constants. Named so the model can be read and checked; not user inputs by design.
+const int ADX_TREND = 20
+const int ATR_MEAN_LEN = 42
+const int VOLUME_MEAN_LEN = 20
+const float VOLUME_SPIKE = 1.2
+const float STRUCTURE_BUFFER = 0.2
+const float STRUCTURE_CAP = 1.5
+const float RSI_UPPER = 75
+const float RSI_LOWER = 25
+const float LOW_VOL_RATIO = 0.7
+const int JOURNAL_MAX = 50
+const int FORM_LEN = 10          // recent-form strip length on the dashboard
+const string MAIN = "Main / data"
+const string ENGINE = "Entry engine"
+const string RISK = "Risk / execution model"
+const string CONTEXT = "Context / session"
+const string SIZE = "Position estimate — linear instruments only"
+const string VIEW = "Display"
+const string ALERTS = "Alerts"
+
+sourceChoice = input.string("Close", "Price source", options = ["Close", "HL2", "HLC3", "OHLC4"], group = MAIN, tooltip = "EMA / RSI / MACD only. Momentum and execution use actual OHLC. External indicator sources are intentionally unsupported.")
+presetInput = input.string("Auto", "Preset", options = ["Auto", "Conservative", "Default", "Aggressive", "Scalping", "Swing", "Crypto 24/7", "Custom"], group = MAIN, tooltip = "Parameter profiles, not validated profitability rankings. Auto: <=5m Scalping; <=1h Default; <4h Conservative; otherwise Swing.")
+htfMode = input.string("Soft score", "HTF mode", options = ["Off", "Soft score", "Hard filter"], group = MAIN)
+htfInput = input.timeframe("", "Higher timeframe (empty = OFF)", group = MAIN, tooltip = "Must be strictly higher when enabled. Uses the last closed HTF bar. Empty means OFF, no unavailable score weight.")
+vwapMode = input.string("Auto", "Session VWAP", options = ["Auto", "On", "Off"], group = MAIN, tooltip = "Auto disables VWAP for Crypto 24/7. On intraday only, with volume data.")
+warmupMult = input.int(3, "Warmup periods", minval = 2, maxval = 10, group = MAIN)
+indicatorScale = input.float(1.0, "Indicator scale (external lever)", minval = 0.01, maxval = 100, step = 0.01, group = MAIN, tooltip = "Multiplies every bar-length parameter: EMAs, RSI, ATR, MACD, DMI, volatility means, and structure/pivot lookbacks. Driven by the chart's Indicator Scale control.")
+startInput = input.time(timestamp("01 Jan 2020 00:00 +0000"), "Entry/statistics start", group = MAIN)
+endInput = input.time(timestamp("01 Jan 2100 00:00 +0000"), "Entry/statistics end", group = MAIN, tooltip = "No new entries at/after end; an open model position closes at the first available confirmed close at/after end. Includes that closing bar.")
+emaFastInput = input.int(9, "EMA fast (Custom)", minval = 3, maxval = 50, group = ENGINE)
+emaSlowInput = input.int(21, "EMA slow (Custom)", minval = 10, maxval = 100, group = ENGINE)
+emaTrendInput = input.int(55, "EMA trend (Custom)", minval = 20, maxval = 200, group = ENGINE)
+rsiLenInput = input.int(13, "RSI length (Custom)", minval = 5, maxval = 30, group = ENGINE)
+scoreInput = input.int(5, "Minimum score / 10 (Custom)", minval = 1, maxval = 10, group = ENGINE, tooltip = "Normalized OPTIONAL evidence. Mandatory crossover and price momentum do not add free points. v1 scores are not comparable.")
+gradeFilter = input.string("All", "Grade filter", options = ["All", "A+ and A", "A+ Only"], group = ENGINE)
+hideC = input.bool(true, "Hide C grade", group = ENGINE, tooltip = "Raises the required evidence ratio to 0.5 regardless of preset. Scalping (0.4) and Aggressive (0.3) only apply their lower thresholds when this is off.")
+volMode = input.string("Skip Signals", "High volatility", options = ["Off", "Skip Signals", "Widen SL"], group = ENGINE)
+volThreshold = input.float(1.3, "High ATR / mean ATR", minval = 1.05, maxval = 3, step = 0.05, group = ENGINE)
+volWiden = input.float(1.5, "High-vol stop multiplier", minval = 1, maxval = 3, step = 0.1, group = ENGINE)
+confirmWindow = input.int(0, "Extra confirmation bars after crossover", minval = 0, maxval = 10, group = ENGINE, tooltip = "0 preserves crossover-only entries. Optional research feature: one candidate, at most one entry; expires on opposite cross, loss of price momentum, or timeout.")
+maxExtension = input.float(0, "Maximum distance to fast EMA / ATR (0 = off)", minval = 0, maxval = 10, step = 0.1, group = ENGINE)
+atrLenInput = input.int(14, "ATR length (Custom)", minval = 5, maxval = 50, group = RISK)
+slMultInput = input.float(1.5, "ATR stop multiplier (Custom)", minval = 0.5, maxval = 5, step = 0.1, group = RISK)
+tp1Mult = input.float(1, "TP1 R", minval = 0.5, maxval = 5, step = 0.1, group = RISK)
+tp2Mult = input.float(2, "TP2 R", minval = 1, maxval = 8, step = 0.1, group = RISK)
+tp3Mult = input.float(3, "TP3 R", minval = 1.5, maxval = 12, step = 0.5, group = RISK)
+tp1Pct = input.float(0, "Close original position at TP1 (%)", minval = 0, maxval = 99, group = RISK)
+tp2Pct = input.float(0, "Close original position at TP2 (%)", minval = 0, maxval = 99, group = RISK, tooltip = "TP1 + TP2 must be < 100%. Defaults 0: whole-position model.")
+trailInput = input.bool(true, "Step stop after targets", group = RISK, tooltip = "TP1 -> entry; TP2 -> TP1; TP3 -> TP2. Effective NEXT bar. Entry-price stop is not net breakeven after costs. No continuous trailing beyond TP3.")
+fullTP3 = input.bool(true, "Close remaining position at TP3", group = RISK)
+structureInput = input.bool(true, "Use window structure", group = RISK)
+swingLookback = input.int(10, "Previous bars for structure (+ current)", minval = 3, maxval = 30, group = RISK)
+structurePolicy = input.string("Cap and flag", "Structure beyond 1.5x ATR stop", options = ["Cap and flag", "Skip entry"], group = RISK)
+minRiskTicks = input.int(2, "Minimum initial risk (ticks)", minval = 1, maxval = 1000, group = RISK)
+commissionPct = input.float(0, "Commission per side (%)", minval = 0, maxval = 5, step = 0.01, group = RISK, tooltip = "Manual proportional cost per fill. Zero means costs excluded. Fixed fees/funding are not modeled.")
+spreadTicks = input.float(0, "Estimated round-trip spread (ticks)", minval = 0, maxval = 1000, group = RISK)
+slipTicks = input.float(0, "Adverse slippage per side (ticks)", minval = 0, maxval = 1000, group = RISK, tooltip = "A cost deduction for every fill, including target fills. Stop gaps are handled separately by open vs stop.")
+costWarningR = input.float(0.2, "Cost warning / initial R", minval = 0.01, maxval = 2, step = 0.01, group = RISK)
+positiveOnly = input.bool(true, "Require positive trade prices", group = RISK)
+
+sessionMode = input.string("Info only", "Trading window", options = ["Off", "Info only", "Filter entries"], group = CONTEXT)
+sessionHours = input.session("0000-0000", "Session hours", group = CONTEXT)
+sessionDays = input.string("1234567", "Session days (1=Sun ... 7=Sat)", group = CONTEXT)
+sessionTZ = input.string("Etc/UTC", "Session timezone (IANA)", group = CONTEXT, tooltip = "For example America/New_York. Independent of chart display timezone.")
+showLevels = input.bool(true, "Show nearest known levels", group = CONTEXT)
+pivotLen = input.int(3, "Confirmed pivot bars left/right", minval = 1, maxval = 20, group = CONTEXT)
+lateR = input.float(0.5, "Signal extension warning (R)", minval = 0.1, maxval = 5, step = 0.1, group = CONTEXT)
+sizeEnabled = input.bool(false, "Enable manual position estimate", group = SIZE)
+linearConfirmed = input.bool(false, "I verified linear contract, point value and account currency", group = SIZE, tooltip = "Only linear P/L with account and quote currency matching. Inverse contracts / FX conversion / liquidation are not modeled.")
+accountCurrency = input.string("USD", "Account currency (must equal quote currency)", group = SIZE)
+equityInput = input.float(10000, "Account equity (manual)", minval = 0.01, group = SIZE)
+riskMode = input.string("Percent", "Risk budget mode", options = ["Percent", "Cash"], group = SIZE)
+riskPct = input.float(1, "Risk budget (%)", minval = 0.01, maxval = 100, group = SIZE)
+riskCash = input.float(100, "Risk budget (cash)", minval = 0.01, group = SIZE)
+pointValueInput = input.float(1, "Cash per price point per unit (manual)", minval = 0.00000001, group = SIZE)
+lotStep = input.float(1, "Quantity step", minval = 0.00000001, group = SIZE)
+minQty = input.float(1, "Minimum quantity", minval = 0.00000001, group = SIZE)
+manualEntry = input.float(0, "Hypothetical entry override (0 = live close)", minval = 0, group = SIZE, tooltip = "Only changes the calculator. It never rewrites the model trade.")
+showDash = input.bool(true, "Dashboard", group = VIEW, tooltip = "Master toggle for the dashboard table.")
+dashPos = input.string("Top Right", "Dashboard position", options = ["Top Right", "Top Left", "Middle Right", "Middle Left", "Bottom Right", "Bottom Left"], group = VIEW)
+showMarketSec = input.bool(true, "  ├ Market section", group = VIEW, tooltip = "Regime, HTF, volatility, session, data status, profile.")
+showSignalSec = input.bool(true, "  ├ Signal section", group = VIEW, tooltip = "Candidate state, evidence gauge, plan, estimated cost, last decision.")
+showTradeSec = input.bool(true, "  ├ Trade section", group = VIEW, tooltip = "Open model position: entry, stop, targets, P/L, distances. Collapses to one row when flat.")
+showStats = input.bool(true, "  ├ Stats section", group = VIEW, tooltip = "Closed-trade statistics and the recent-form strip.")
+showDiagSec = input.bool(false, "  └ Diagnostics section", group = VIEW, tooltip = "Evidence factors, candidate funnel, rejection reasons, group breakdowns.")
+textSize = input.string("Small", "Text size", options = ["Tiny", "Small", "Normal"], group = VIEW)
+panelAlpha = input.int(8, "Panel transparency", minval = 0, maxval = 90, group = VIEW)
+theme = input.string("Auto", "Theme", options = ["Auto", "Dark", "Light"], group = VIEW)
+showJournal = input.bool(false, "Recent trades table", group = VIEW)
+journalRows = input.int(5, "Recent trades shown", minval = 1, maxval = 15, group = VIEW)
+journalPos = input.string("Bottom Left", "Journal position", options = ["Top Right", "Top Left", "Middle Right", "Middle Left", "Bottom Right", "Bottom Left"], group = VIEW)
+showSignals = input.bool(true, "Entry markers", group = VIEW)
+signalSizeInput = input.string("Small", "Signal size", options = ["Tiny", "Small", "Normal", "Large", "Huge"], group = VIEW)
+showGradeInput = input.bool(true, "Show grade on entry markers", group = VIEW)
+neutralColorInput = input.color(#FFEB3B, "Neutral", group = VIEW)
+showExits = input.bool(true, "Exit markers", group = VIEW)
+showRibbon = input.bool(true, "EMA ribbon", group = VIEW)
+showTPSL = input.bool(true, "Trade levels", group = VIEW)
+showTrail = input.bool(true, "Effective step stop", group = VIEW)
+showBg = input.bool(false, "Trend background", group = VIEW)
+showWatermark = input.bool(true, "Watermark", group = VIEW)
+labelOffset = input.int(20, "Level label offset", minval = 5, maxval = 50, group = VIEW)
+bullColor = input.color(#00B876, "Bull", group = VIEW)
+bearColor = input.color(#E34850, "Bear", group = VIEW)
+webhookInput = input.bool(false, "JSON event batch", group = ALERTS, tooltip = "Schema v2; one batch at bar close, distinct events with trade_id/event_id. Existing v1 receivers must be updated. Recreate TradingView alerts after updating.")
+alertEntry = input.bool(true, "Entry events", group = ALERTS)
+alertTargets = input.bool(true, "Target events", group = ALERTS)
+alertStopMove = input.bool(true, "Stop changes", group = ALERTS)
+alertExit = input.bool(true, "Full exit events", group = ALERTS)
+alertCandidate = input.bool(false, "Candidate expiry / cancellation", group = ALERTS)
+instanceTag = input.string("main", "Alert instance tag", group = ALERTS, tooltip = "Use a distinct tag per concurrently running configuration on the same symbol/timeframe.")
+
+// Preset profiles: EMA lengths, RSI, ATR, minimum score (out of 10) and ATR stop multiplier.
+float tfSeconds = timeframe.in_seconds()
+string preset = presetInput == "Auto" ? (tfSeconds <= 300 ? "Scalping" : tfSeconds <= 3600 ? "Default" : tfSeconds < 14400 ? "Conservative" : "Swing") : presetInput
+[fastLenRaw, slowLenRaw, trendLenRaw, rsiLenRaw, atrLenRaw, minScore, slMult] = switch preset
+    "Scalping" => [5, 13, 34, 8, 10, 4, 0.8]
+    "Aggressive" => [8, 18, 50, 11, 12, 3, 1.2]
+    "Default" => [9, 21, 55, 13, 14, 5, 1.5]
+    "Conservative" => [12, 26, 89, 14, 14, 7, 2.0]
+    "Swing" => [13, 34, 89, 21, 20, 6, 2.5]
+    "Crypto 24/7" => [9, 21, 55, 14, 20, 5, 2.0]
+    => [emaFastInput, emaSlowInput, emaTrendInput, rsiLenInput, atrLenInput, scoreInput, slMultInput]
+// Indicator scale lever: multiplies all period lengths. Ordering clamps keep
+// fast < slow < trend even when rounding collapses small presets at low scale.
+float lenScale = math.max(0.01, indicatorScale)
+int fastLen = math.max(1, int(math.round(fastLenRaw * lenScale)))
+int slowLen = math.max(fastLen + 1, int(math.round(slowLenRaw * lenScale)))
+int trendLen = math.max(slowLen + 1, int(math.round(trendLenRaw * lenScale)))
+int rsiLen = math.max(1, int(math.round(rsiLenRaw * lenScale)))
+int atrLen = math.max(1, int(math.round(atrLenRaw * lenScale)))
+int macdLenF = math.max(1, int(math.round(12 * lenScale)))
+int macdLenS = math.max(macdLenF + 1, int(math.round(26 * lenScale)))
+int macdLenG = math.max(1, int(math.round(9 * lenScale)))
+int dmiLen = math.max(1, int(math.round(14 * lenScale)))
+int atrMeanLen = math.max(1, int(math.round(ATR_MEAN_LEN * lenScale)))
+int volMeanLen = math.max(1, int(math.round(VOLUME_MEAN_LEN * lenScale)))
+int swingLen = math.max(1, int(math.round(swingLookback * lenScale)))
+int pivotLenS = math.max(1, int(math.round(pivotLen * lenScale)))
+bool htfEnabled = htfMode != "Off" and htfInput != ""
+if barstate.isfirst
+    // Pine rounds float comparison operands to 9 decimals. Fail closed for microticks.
+    // Scale before comparing so the guard itself cannot round the tick to zero.
+    if syminfo.mintick * 1e9 < 10
+        runtime.error("Minimum supported price tick is 0.00000001 (1e-8). Smaller ticks require a separate precision model.")
+    if not chart.is_standard
+        runtime.error("Use standard time-based candles. Synthetic OHLC are not executable prices.")
+    if na(tfSeconds) or tfSeconds <= 0
+        runtime.error("Only time-based charts are supported.")
+    if not (fastLen < slowLen and slowLen < trendLen)
+        runtime.error("EMA periods must satisfy Fast < Slow < Trend.")
+    if not (tp1Mult < tp2Mult and tp2Mult < tp3Mult)
+        runtime.error("TP multipliers must satisfy TP1 < TP2 < TP3.")
+    if tp1Pct + tp2Pct >= 100
+        runtime.error("TP1 + TP2 partial fractions must be less than 100%.")
+    if startInput >= endInput
+        runtime.error("Statistics start must precede end.")
+    if htfEnabled and timeframe.in_seconds(htfInput) <= tfSeconds
+        runtime.error("Enabled HTF must be strictly higher; use empty/Off to disable.")
+    if na(str.match(sessionDays, "^[1-7]+$"))
+        runtime.error("Session days must contain digits 1 to 7.")
+    if showDash and showJournal and dashPos == journalPos
+        runtime.error("Select different corners for the dashboard and trade journal.")
+
+// Helpers: exact tick prices are used for model, drawing and notifications.
+fmt(float x) => na(x) ? "N/A" : str.tostring(x, "#.##")
+price(float x) => na(x) ? "N/A" : str.tostring(x, format.mintick)
+jsonNum(float x) => na(x) ? "null" : str.tostring(x, "#.################")
+qtyFmt(float x) => na(x) ? "N/A" : str.tostring(x, "#.################")
+escape(string x) => str.replace_all(str.replace_all(str.replace_all(str.replace_all(str.replace_all(x, "\\", "\\\\"), '"', '\\"'), "\n", "\\n"), "\r", "\\r"), "\t", "\\t")
+gradeOf(float ratio) => ratio >= 0.8 ? "A+" : ratio >= 0.65 ? "A" : ratio >= 0.5 ? "B" : "C"
+gradeIndex(string g) => g == "A+" ? 0 : g == "A" ? 1 : g == "B" ? 2 : 3
+directionName(int d) => d == 1 ? "Long" : d == -1 ? "Short" : "None"
+pos(string p) => p == "Top Left" ? position.top_left : p == "Middle Left" ? position.middle_left : p == "Middle Right" ? position.middle_right : p == "Bottom Left" ? position.bottom_left : p == "Bottom Right" ? position.bottom_right : position.top_right
+// Unicode block gauge: filled ▰ proportional to value / maxVal across `width` cells.
+buildGauge(float value, float maxVal, int width) =>
+    string result = ""
+    int filled = na(value) or maxVal <= 0 ? 0 : math.round(math.min(width, math.max(0.0, value / maxVal * width)))
+    for i = 0 to width - 1
+        result += i < filled ? "▰" : "▱"
+    result
+txtSize = textSize == "Tiny" ? size.tiny : textSize == "Normal" ? size.normal : size.small
+signalSize = signalSizeInput == "Tiny" ? size.tiny : signalSizeInput == "Normal" ? size.normal : signalSizeInput == "Large" ? size.large : signalSizeInput == "Huge" ? size.huge : size.small
+roundDown(float x) => math.round_to_mintick(math.floor(x / syminfo.mintick + 1e-8) * syminfo.mintick)
+roundUp(float x) => math.round_to_mintick(math.ceil(x / syminfo.mintick - 1e-8) * syminfo.mintick)
+sideCost(float fillPrice) => math.abs(fillPrice) * commissionPct / 100 + (spreadTicks * 0.5 + slipTicks) * syminfo.mintick
+nearestAbove(float ref, float a, float b, float c) =>
+    float found = na
+    for level in array.from(a, b, c)
+        if not na(level) and level > ref and (na(found) or level < found)
+            found := level
+    found
+nearestBelow(float ref, float a, float b, float c) =>
+    float found = na
+    for level in array.from(a, b, c)
+        if not na(level) and level < ref and (na(found) or level > found)
+            found := level
+    found
+
+// All time-series calculations run on every bar, including historical bars.
+float source = sourceChoice == "HL2" ? hl2 : sourceChoice == "HLC3" ? hlc3 : sourceChoice == "OHLC4" ? ohlc4 : close
+float emaFast = ta.ema(source, fastLen)
+float emaSlow = ta.ema(source, slowLen)
+float emaTrend = ta.ema(source, trendLen)
+float atr = ta.atr(atrLen)
+float atrMean = ta.sma(atr, atrMeanLen)
+float rsi = ta.rsi(source, rsiLen)
+[_, _, hist] = ta.macd(source, macdLenF, macdLenS, macdLenG)
+[diPlus, diMinus, adx] = ta.dmi(dmiLen, dmiLen)
+float volMean = ta.sma(volume, volMeanLen)
+float vwap = ta.vwap(hlc3)
+var bool hasVolume = false
+if barstate.isconfirmed and not na(volume) and volume > 0
+    hasVolume := true
+bool vwapEnabled = timeframe.isintraday and (vwapMode == "On" or (vwapMode == "Auto" and preset != "Crypto 24/7"))
+bool volumeReady = not hasVolume or (not na(volume) and volume >= 0 and not na(volMean) and volMean > 0)
+bool vwapReady = not (vwapEnabled and hasVolume) or not na(vwap)
+bool volAbove = hasVolume and volumeReady and volume > volMean * VOLUME_SPIKE
+[htfFast, htfSlow, htfClosedAt, htfReady] = request.security(syminfo.tickerid, htfEnabled ? htfInput : timeframe.period, [ta.ema(source, fastLen)[1], ta.ema(source, slowLen)[1], time_close[1], bar_index[1] >= slowLen * warmupMult], lookahead = barmerge.lookahead_on)
+int htfBias = htfEnabled and htfReady ? (htfFast > htfSlow ? 1 : htfFast < htfSlow ? -1 : 0) : 0
+int warmupBars = math.max(trendLen * warmupMult, atrLen + atrMeanLen)
+bool warmed = bar_index >= warmupBars
+bool ready = warmed and not na(atr) and atr > 0 and not na(atrMean) and atrMean > 0 and not na(rsi) and not na(hist[1]) and not na(adx) and volumeReady and vwapReady and (not htfEnabled or (htfReady and not na(htfFast) and not na(htfSlow)))
+float volRatio = atrMean > 0 ? atr / atrMean : na
+bool highVol = not na(volRatio) and volRatio > volThreshold
+string volatility = na(volRatio) ? "N/A" : highVol ? "High" : volRatio < LOW_VOL_RATIO ? "Low" : "Normal"
+float stopMultiplier = volMode == "Widen SL" and highVol ? volWiden : 1
+bool bullCross = ta.crossover(emaFast, emaSlow)
+bool bearCross = ta.crossunder(emaFast, emaSlow)
+// Mandatory price momentum: single definition for the gate, the candidate lifecycle and diagnostics.
+bool bullMomentum = close > emaFast and close > emaSlow
+bool bearMomentum = close < emaFast and close < emaSlow
+int trendDir = emaFast > emaSlow and close > emaTrend ? 1 : emaFast < emaSlow and close < emaTrend ? -1 : 0
+bool trending = adx >= ADX_TREND
+int regime = not trending ? 0 : trendDir != 0 ? 1 : 2
+string regimeName = regime == 0 ? "Range (ADX<" + str.tostring(ADX_TREND) + ")" : regime == 1 ? "Trend " + directionName(trendDir) : "Mixed"
+float scoreMax = 5 + (hasVolume ? 1 : 0) + (vwapEnabled and hasVolume ? 1 : 0) + (htfEnabled and htfMode == "Soft score" ? 1.5 : 0)
+float bullScore = (close > emaTrend ? 1 : 0) + (rsi > 50 and rsi < RSI_UPPER ? 1 : 0) + (hist > 0 ? 1 : 0) + (hist > hist[1] ? 1 : 0) + (trending and diPlus > diMinus ? 1 : 0) + (volAbove ? 1 : 0) + (vwapEnabled and hasVolume and close > vwap ? 1 : 0) + (htfEnabled and htfMode == "Soft score" and htfBias == 1 ? 1.5 : 0)
+float bearScore = (close < emaTrend ? 1 : 0) + (rsi < 50 and rsi > RSI_LOWER ? 1 : 0) + (hist < 0 ? 1 : 0) + (hist < hist[1] ? 1 : 0) + (trending and diMinus > diPlus ? 1 : 0) + (volAbove ? 1 : 0) + (vwapEnabled and hasVolume and close < vwap ? 1 : 0) + (htfEnabled and htfMode == "Soft score" and htfBias == -1 ? 1.5 : 0)
+float requiredRatio = math.max(minScore / 10.0, math.max(hideC ? 0.5 : 0, gradeFilter == "A+ Only" ? 0.8 : gradeFilter == "A+ and A" ? 0.65 : 0))
+float swingLow = ta.lowest(low, swingLen + 1)
+float swingHigh = ta.highest(high, swingLen + 1)
+
+makePlan(int d) =>
+    float e = math.round_to_mintick(close)
+    float atrDistance = atr * slMult * stopMultiplier
+    float atrStop = e - d * atrDistance
+    float structStop = d == 1 ? swingLow - atr * STRUCTURE_BUFFER : swingHigh + atr * STRUCTURE_BUFFER
+    // Structure only widens the stop (never tightens), then the cap bounds the widening.
+    float rawStop = structureInput ? (d == 1 ? math.min(atrStop, structStop) : math.max(atrStop, structStop)) : atrStop
+    bool capped = structureInput and math.abs(e - rawStop) > atrDistance * STRUCTURE_CAP
+    float bounded = capped ? e - d * atrDistance * STRUCTURE_CAP : rawStop
+    float stop = d == 1 ? roundDown(bounded) : roundUp(bounded)
+    float risk = math.abs(e - stop)
+    float p1 = math.round_to_mintick(e + d * risk * tp1Mult)
+    float p2 = math.round_to_mintick(e + d * risk * tp2Mult)
+    float p3 = math.round_to_mintick(e + d * risk * tp3Mult)
+    bool valid = not na(risk) and risk >= minRiskTicks * syminfo.mintick - syminfo.mintick * 1e-6 and d * (e - stop) > 0 and d * (p1 - e) > 0 and d * (p2 - p1) > 0 and d * (p3 - p2) > 0 and (not positiveOnly or math.min(math.min(e, stop), math.min(p1, math.min(p2, p3))) > 0)
+    string origin = not structureInput ? "ATR" : capped ? "ATR capped (inside structure possible)" : rawStop != atrStop ? "Structure" : "ATR"
+    [e, stop, risk, p1, p2, p3, capped, valid, origin]
+
+string sessionSpec = sessionHours + ":" + sessionDays
+// time() with a session spec returns the bar's own time when inside the session, na otherwise.
+bool inSession = not na(time(timeframe.period, sessionSpec, sessionTZ))
+bool sessionAllowed = sessionMode != "Filter entries" or inSession
+bool dateAllowed = time >= startInput and time_close < endInput
+// A session with a gap starts when the gap ends. A contiguous 24h session has no gap,
+// so it rolls on the calendar day in sessionTZ. Sessions that span midnight must NOT
+// use the day key, or their running high/low would reset mid-session.
+int sessionKey = time("1D", sessionSpec, sessionTZ)
+bool sessionStart = inSession and (not inSession[1] or (sessionHours == "0000-0000" and sessionKey != sessionKey[1]))
+var float sessionHigh = na
+var float sessionLow = na
+if inSession
+    sessionHigh := sessionStart or na(sessionHigh) ? high : math.max(sessionHigh, high)
+    sessionLow := sessionStart or na(sessionLow) ? low : math.min(sessionLow, low)
+[priorDayHigh, priorDayLow] = request.security(syminfo.tickerid, timeframe.isintraday ? "1D" : timeframe.period, [high[1], low[1]], lookahead = barmerge.lookahead_on)
+float pivotHigh = ta.pivothigh(high, pivotLenS, pivotLenS)
+float pivotLow = ta.pivotlow(low, pivotLenS, pivotLenS)
+var float knownHigh = na
+var float knownLow = na
+if barstate.isconfirmed
+    if not na(pivotHigh)
+        knownHigh := pivotHigh
+    if not na(pivotLow)
+        knownLow := pivotLow
+
+// One object per trade. Closed objects are never reused or modified.
+type Trade
+    bool active = false
+    int dir = 0
+    string id = ""
+    int entryBar = na
+    int entryTime = na
+    float entry = na
+    float initialStop = na
+    float stop = na
+    float risk = na
+    float tp1 = na
+    float tp2 = na
+    float tp3 = na
+    bool hit1 = false
+    bool hit2 = false
+    bool hit3 = false
+    float remaining = 1.0
+    float grossR = 0.0
+    float costR = 0.0
+    float score = na
+    float maxScore = na
+    string grade = ""
+    int regime = 0
+    string origin = ""
+    int exitBar = na
+    int exitTime = na
+    float exitPrice = na
+    string reason = ""
+    bool ambiguous = false
+    float mfe = 0.0
+    float mae = 0.0
+
+method netR(Trade t) => t.grossR - t.costR
+method takePartial(Trade t, float px, float requestedFraction) =>
+    float fraction = math.min(t.remaining, math.max(0, requestedFraction))
+    t.grossR += fraction * t.dir * (px - t.entry) / t.risk
+    t.costR += fraction * sideCost(px) / t.risk
+    t.remaining := math.max(0, t.remaining - fraction)
+method finish(Trade t, float px, string why) =>
+    t.takePartial(px, t.remaining)
+    t.active := false
+    t.exitPrice := px
+    t.exitBar := bar_index
+    t.exitTime := time_close
+    t.reason := why
+method observe(Trade t, float favorable, float adverse) =>
+    t.mfe := math.max(t.mfe, math.max(0, t.dir * (favorable - t.entry) / t.risk))
+    t.mae := math.max(t.mae, math.max(0, -t.dir * (adverse - t.entry) / t.risk))
+method event(Trade t, array<string> events, array<string> texts, string kind, float level, bool enabled) =>
+    if enabled
+        string eid = t.id + ":" + str.tostring(time_close) + ":" + kind
+        string message = '{"event_id":"' + escape(eid) + '","trade_id":"' + escape(t.id) + '","event_type":"' + kind + '","direction":"' + directionName(t.dir) + '","bar_time":' + str.tostring(time)
+        message += ',"time_close":' + str.tostring(time_close)
+        message += ',"entry":' + jsonNum(t.entry)
+        message += ',"level_price":' + jsonNum(level)
+        message += ',"bar_close":' + jsonNum(close)
+        message += ',"initial_stop":' + jsonNum(t.initialStop)
+        message += ',"new_stop":' + jsonNum(t.stop)
+        message += ',"stop_effective":"next_bar","tp1":' + jsonNum(t.tp1)
+        message += ',"tp2":' + jsonNum(t.tp2)
+        message += ',"tp3":' + jsonNum(t.tp3)
+        message += ',"remaining":' + jsonNum(t.remaining)
+        message += ',"position_closed":' + (t.active ? "false" : "true")
+        message += ',"exit_reason":"' + escape(t.reason) + '","realized_net_r":' + jsonNum(t.netR())
+        message += ',"score":' + jsonNum(t.score)
+        message += ',"score_max":' + jsonNum(t.maxScore)
+        message += ',"grade":"' + t.grade + '","ambiguous_bar":' + (t.ambiguous ? "true" : "false") + '}'
+        array.push(events, message)
+        array.push(texts, syminfo.tickerid + " | " + timeframe.period + " | " + directionName(t.dir) + " | " + kind + " | Level " + price(level) + " | Stop " + price(t.stop) + " | Remaining " + fmt(t.remaining * 100) + "% | Model net " + fmt(t.netR()) + "R | " + t.reason + " | " + str.format_time(time_close, "yyyy-MM-dd HH:mm", sessionTZ))
+
+var Trade trade = Trade.new()
+var array<Trade> journal = array.new<Trade>()
+var array<int> rejected = array.new_int(12, 0)
+var array<int> groupN = array.new_int(9, 0)
+var array<float> groupR = array.new_float(9, 0)
+var int candidates = 0
+var int accepted = 0
+var int pendingDir = 0
+var int pendingBar = na
+var string pendingId = ""
+var string lastDecision = "Waiting for crossover"
+var int total = 0
+var int wins = 0
+var int losses = 0
+var int breakevens = 0
+var int lossStreak = 0
+var int maxLossStreak = 0
+var float totalR = 0
+var float grossWin = 0
+var float grossLoss = 0
+var float peakR = 0
+var float maxDrawdownR = 0
+var int totalDuration = 0
+var int ambiguousTrades = 0
+var int reachedTP1 = 0
+var int reachedTP2 = 0
+var float totalMFE = 0
+var float totalMAE = 0
+var int firstEntryAt = na
+var int lastExitAt = na
+array<string> events = array.new_string()
+array<string> texts = array.new_string()
+bool confirmedBuy = false
+bool confirmedSell = false
+bool tp1Event = false
+bool tp2Event = false
+bool tp3Event = false
+bool slEvent = false
+bool exitEvent = false
+bool stopEvent = false
+bool cancelEvent = false
+
+rejectReason(int code) =>
+    switch code
+        1 => "Data not ready / warmup"
+        2 => "Outside date window"
+        3 => "Outside trading session"
+        4 => "High volatility blocks entry"
+        5 => "Price momentum lost"
+        6 => "RSI extreme"
+        7 => "HTF opposes / neutral"
+        8 => "Insufficient score"
+        9 => "Invalid tick/risk/target geometry"
+        10 => "Structure exceeds cap"
+        11 => "Too far from fast EMA"
+        => "Accepted"
+gate(int d, bool planValid, bool capped) =>
+    float evidence = d == 1 ? bullScore : bearScore
+    bool momentum = d == 1 ? bullMomentum : bearMomentum
+    // Diagnostic priority is independent of the candidate's terminal conditions.
+    int result = 0
+    if not ready
+        result := 1
+    else if not dateAllowed
+        result := 2
+    else if not sessionAllowed
+        result := 3
+    else if volMode == "Skip Signals" and highVol
+        result := 4
+    else if not momentum
+        result := 5
+    else if (d == 1 ? rsi >= RSI_UPPER : rsi <= RSI_LOWER)
+        result := 6
+    else if htfEnabled and htfMode == "Hard filter" and htfBias != d
+        result := 7
+    else if evidence + 1e-9 < requiredRatio * scoreMax
+        result := 8
+    else if not planValid
+        result := 9
+    else if structurePolicy == "Skip entry" and capped
+        result := 10
+    else if maxExtension > 0 and math.abs(close - emaFast) / atr > maxExtension
+        result := 11
+    result
+candidateEvent(array<string> ev, array<string> tx, string id, int dir, string why) =>
+    if alertCandidate
+        array.push(ev, '{"event_id":"' + escape(id + ":" + str.tostring(time_close) + ":candidate_cancelled") + '","candidate_id":"' + escape(id) + '","event_type":"candidate_cancelled","direction":"' + directionName(dir) + '","time_close":' + str.tostring(time_close) + ',"reason":"' + escape(why) + '"}')
+        array.push(tx, syminfo.tickerid + " | " + timeframe.period + " | " + directionName(dir) + " candidate cancelled | " + why)
+
+if barstate.isconfirmed
+    // Candidate lifecycle, counted once per crossover (not on every rejected bar).
+    if (bullCross or bearCross) and dateAllowed and warmed
+        if pendingDir != 0
+            candidateEvent(events, texts, pendingId, pendingDir, "Opposite crossover")
+            cancelEvent := true
+            array.set(rejected, 0, array.get(rejected, 0) + 1)
+        pendingDir := bullCross ? 1 : -1
+        pendingBar := bar_index
+        pendingId := instanceTag + ":" + syminfo.tickerid + ":" + timeframe.period + ":" + str.tostring(time_close)
+        candidates += 1
+    int signal = 0
+    if pendingDir != 0
+        [_, _, _, _, _, _, cap, valid, _] = makePlan(pendingDir)
+        int code = gate(pendingDir, valid, cap)
+        // A higher-priority temporary gate must never keep a broken candidate alive.
+        if not (pendingDir == 1 ? bullMomentum : bearMomentum)
+            code := 5
+        // The candidate's last bar is confirmWindow bars after the crossover; it never survives past it.
+        bool lastChance = bar_index - pendingBar >= confirmWindow
+        bool alreadyOpen = trade.active and trade.dir == pendingDir
+        if code == 0 and not alreadyOpen
+            signal := pendingDir
+            lastDecision := directionName(signal) + " accepted"
+            accepted += 1
+            pendingDir := 0
+        else
+            lastDecision := alreadyOpen ? "Same direction already open" : rejectReason(code)
+            bool terminal = lastChance or code == 5 or alreadyOpen or not dateAllowed
+            if terminal
+                int slot = alreadyOpen ? 0 : code
+                array.set(rejected, slot, array.get(rejected, slot) + 1)
+                candidateEvent(events, texts, pendingId, pendingDir, lastDecision)
+                cancelEvent := true
+                pendingDir := 0
+
+    // OLD position is processed before a new entry can overwrite anything.
+    if trade.active and bar_index > trade.entryBar
+        float oldStop = trade.stop
+        bool stopped = trade.dir == 1 ? low <= oldStop : high >= oldStop
+        bool touch1 = not trade.hit1 and (trade.dir == 1 ? high >= trade.tp1 : low <= trade.tp1)
+        bool touch2 = not trade.hit2 and (trade.dir == 1 ? high >= trade.tp2 : low <= trade.tp2)
+        bool touch3 = not trade.hit3 and (trade.dir == 1 ? high >= trade.tp3 : low <= trade.tp3)
+        if stopped
+            float fillPrice = trade.dir == 1 ? math.min(open, oldStop) : math.max(open, oldStop)
+            trade.ambiguous := trade.ambiguous or touch1 or touch2 or touch3
+            trade.observe(open, open)
+            trade.observe(fillPrice, fillPrice)
+            trade.finish(fillPrice, oldStop == trade.initialStop ? "SL" : "Step stop")
+            slEvent := true
+        else
+            if touch1
+                trade.hit1 := true
+                trade.takePartial(trade.tp1, tp1Pct / 100)
+                tp1Event := true
+                trade.event(events, texts, "tp1_hit", trade.tp1, alertTargets)
+            if touch2
+                trade.hit2 := true
+                trade.takePartial(trade.tp2, tp2Pct / 100)
+                tp2Event := true
+                trade.event(events, texts, "tp2_hit", trade.tp2, alertTargets)
+            if touch3
+                trade.hit3 := true
+                tp3Event := true
+                trade.event(events, texts, "tp3_hit", trade.tp3, alertTargets)
+                if fullTP3
+                    trade.observe(open, open)
+                    trade.observe(trade.tp3, trade.tp3)
+                    trade.finish(trade.tp3, "TP3")
+            if trade.active
+                trade.observe(trade.dir == 1 ? high : low, trade.dir == 1 ? low : high)
+                if signal == -trade.dir
+                    trade.finish(close, "Reversal")
+                else if time_close >= endInput
+                    trade.finish(close, "Date end")
+                else if trailInput
+                    float nextStop = trade.hit3 ? trade.tp2 : trade.hit2 ? trade.tp1 : trade.hit1 ? trade.entry : trade.stop
+                    if trade.dir * (nextStop - trade.stop) > syminfo.mintick * 0.1
+                        trade.stop := nextStop
+                        stopEvent := true
+                        trade.event(events, texts, "stop_changed", nextStop, alertStopMove)
+
+        if not trade.active
+            // Single accounting path for every complete exit, after all partial fills.
+            exitEvent := true
+            float realized = trade.netR()
+            total += 1
+            totalR += realized
+            peakR := math.max(peakR, totalR)
+            maxDrawdownR := math.max(maxDrawdownR, peakR - totalR)
+            totalDuration += bar_index - trade.entryBar
+            lastExitAt := time_close
+            totalMFE += trade.mfe
+            totalMAE += trade.mae
+            reachedTP1 += trade.hit1 ? 1 : 0
+            reachedTP2 += trade.hit2 ? 1 : 0
+            ambiguousTrades += trade.ambiguous ? 1 : 0
+            if realized > 1e-8
+                wins += 1
+                grossWin += realized
+                lossStreak := 0
+            else if realized < -1e-8
+                losses += 1
+                grossLoss += -realized
+                lossStreak += 1
+                maxLossStreak := math.max(maxLossStreak, lossStreak)
+            else
+                breakevens += 1
+                lossStreak := 0
+            for bucket in array.from(trade.dir == 1 ? 0 : 1, 2 + gradeIndex(trade.grade), 6 + trade.regime)
+                array.set(groupN, bucket, array.get(groupN, bucket) + 1)
+                array.set(groupR, bucket, array.get(groupR, bucket) + realized)
+            trade.event(events, texts, "exit", trade.exitPrice, alertExit)
+            array.unshift(journal, trade)
+            if array.size(journal) > JOURNAL_MAX
+                array.pop(journal)
+            if showExits
+                label.new(bar_index, trade.exitPrice, trade.reason + " " + fmt(realized) + "R", style = trade.dir == 1 ? label.style_label_down : label.style_label_up, color = realized > 0 ? bullColor : realized < 0 ? bearColor : neutralColorInput, textcolor = color.white, size = size.tiny, tooltip = "Model exit " + price(trade.exitPrice) + "\nGross " + fmt(trade.grossR) + "R / costs " + fmt(trade.costR) + "R\nMFE/MAE lower bounds " + fmt(trade.mfe) + "/" + fmt(trade.mae) + "R\n" + (trade.ambiguous ? "Ambiguous OHLC: old stop first" : "Confirmed bar model"))
+
+    if signal != 0 and not trade.active
+        [e, st, r, t1, t2, t3, cap, valid, origin] = makePlan(signal)
+        trade := Trade.new(active = true, dir = signal, id = instanceTag + ":" + syminfo.tickerid + ":" + timeframe.period + ":" + str.tostring(time_close), entryBar = bar_index, entryTime = time_close, entry = e, initialStop = st, stop = st, risk = r, tp1 = t1, tp2 = t2, tp3 = t3, score = signal == 1 ? bullScore : bearScore, maxScore = scoreMax, grade = gradeOf((signal == 1 ? bullScore : bearScore) / scoreMax), regime = regime, origin = origin)
+        trade.costR := sideCost(e) / r
+        firstEntryAt := na(firstEntryAt) ? time_close : firstEntryAt
+        confirmedBuy := signal == 1
+        confirmedSell := signal == -1
+        trade.event(events, texts, "entry", e, alertEntry)
+        if showSignals
+            label.new(bar_index, signal == 1 ? low : high, directionName(signal) + (showGradeInput ? " " + trade.grade : ""), style = signal == 1 ? label.style_label_up : label.style_label_down, color = signal == 1 ? bullColor : bearColor, textcolor = color.white, size = signalSize, tooltip = "Entry " + price(e) + " | risk " + price(r) + "\nEvidence " + fmt(trade.score) + "/" + fmt(scoreMax) + "\n" + origin + "\n" + regimeName + "\nPartial TP1/2: " + fmt(tp1Pct) + "% / " + fmt(tp2Pct) + "%")
+
+// One confirmed batch preserves exits of old trade + entry of new trade on the same bar.
+if barstate.isconfirmed and array.size(events) > 0
+    string payload = '{"schema_version":2,"script_version":"' + VERSION + '","instance":"' + escape(instanceTag) + '","ticker":"' + escape(syminfo.tickerid) + '","tf":"' + timeframe.period + '","execution_model":"close_entry_old_stop_first_next_bar_trail","events":[' + array.join(events, ",") + ']}'
+    alert(webhookInput ? payload : array.join(texts, "\n"), alert.freq_once_per_bar_close)
+
+// Independent selectable conditions can only tighten the entry filter.
+alertcondition(confirmedBuy, "Buy Signal", "Confirmed BUY {{ticker}} {{interval}} at {{close}}")
+alertcondition(confirmedSell, "Sell Signal", "Confirmed SELL {{ticker}} {{interval}} at {{close}}")
+alertcondition(confirmedBuy and trade.grade == "A+", "Buy A+ only", "BUY A+ {{ticker}} {{interval}}")
+alertcondition(confirmedSell and trade.grade == "A+", "Sell A+ only", "SELL A+ {{ticker}} {{interval}}")
+alertcondition(confirmedBuy and (trade.grade == "A+" or trade.grade == "A"), "Buy A+ and A", "BUY A+/A {{ticker}} {{interval}}")
+alertcondition(confirmedSell and (trade.grade == "A+" or trade.grade == "A"), "Sell A+ and A", "SELL A+/A {{ticker}} {{interval}}")
+alertcondition(confirmedBuy and trade.grade != "C", "Buy B or better", "BUY B+ {{ticker}} {{interval}}")
+alertcondition(confirmedSell and trade.grade != "C", "Sell B or better", "SELL B+ {{ticker}} {{interval}}")
+alertcondition(tp1Event, "TP1 Hit", "Model TP1 {{ticker}} {{interval}} (bar close {{close}} is not fill price)")
+alertcondition(tp2Event, "TP2 Hit", "Model TP2 {{ticker}} {{interval}}")
+alertcondition(tp3Event, "TP3 Hit", "Model TP3 {{ticker}} {{interval}}")
+alertcondition(slEvent, "Stop Hit", "Model stop exit {{ticker}} {{interval}}")
+alertcondition(exitEvent, "Position Closed", "Model position closed {{ticker}} {{interval}}")
+alertcondition(stopEvent, "Stop Changed", "Model stop changed for NEXT bar {{ticker}} {{interval}}")
+alertcondition(cancelEvent, "Candidate Cancelled", "Candidate expired/cancelled {{ticker}} {{interval}}")
+alertcondition(confirmedBuy or confirmedSell, "Any Signal", "Confirmed entry {{ticker}} {{interval}}")
+
+// Rendering never changes trade state.
+// Theme-aware palette for the dashboard, journal and watermark.
+bool dark = theme == "Dark" or (theme == "Auto" and (0.2126 * color.r(chart.bg_color) + 0.7152 * color.g(chart.bg_color) + 0.0722 * color.b(chart.bg_color)) < 128)
+color textColor = theme == "Auto" ? chart.fg_color : dark ? #E0E0E0 : #1A1A1A
+color textMuted = dark ? #9E9E9E : #757575
+color tableBg = color.new(dark ? #131722 : #FFFFFF, panelAlpha)
+color tableRowAlt = color.new(dark ? #1C2030 : #F0F4F8, panelAlpha)
+color tableBorder = dark ? #2A2E39 : #D0D0D0
+color headerText = #FFFFFF
+color headerBull = #0F6E56
+color headerBear = #A32D2D
+color headerFlat = #2962FF
+color bullText = dark ? bullColor : #006B45
+color bearText = dark ? bearColor : #A32330
+color neutralText = dark ? neutralColorInput : #F57F17
+color wmColor = color.new(textColor, 80)
+pFast = plot(showRibbon ? emaFast : na, "EMA Fast", color = color.new(bullColor, 20), linewidth = 2)
+pSlow = plot(showRibbon ? emaSlow : na, "EMA Slow", color = color.new(bearColor, 20), linewidth = 2)
+fill(pFast, pSlow, color = color.new(emaFast > emaSlow ? bullColor : bearColor, 88))
+plot(showRibbon ? emaTrend : na, "EMA Trend", color = textMuted)
+bgcolor(showBg ? color.new(trendDir == 1 ? bullColor : trendDir == -1 ? bearColor : neutralColorInput, 94) : na)
+float above = nearestAbove(close, timeframe.isintraday ? priorDayHigh : na, timeframe.isintraday and inSession ? sessionHigh : na, knownHigh)
+float below = nearestBelow(close, timeframe.isintraday ? priorDayLow : na, timeframe.isintraday and inSession ? sessionLow : na, knownLow)
+plot(showLevels ? above : na, "Nearest resistance (known now)", color = color.new(bearColor, 35), style = plot.style_linebr)
+plot(showLevels ? below : na, "Nearest support (known now)", color = color.new(bullColor, 35), style = plot.style_linebr)
+
+var array<line> levelLines = array.new_line()
+var array<label> levelLabels = array.new_label()
+// Time coordinates remain valid even when the last exit is >10000 bars in the past.
+// The forward offset is nominal timeframe time, not a prediction of session bars.
+int levelRightTime = trade.active ? time_close + int(tfSeconds * 1000) * labelOffset : trade.exitTime
+if confirmedBuy or confirmedSell
+    for ln in levelLines
+        line.delete(ln)
+    for lb in levelLabels
+        label.delete(lb)
+    array.clear(levelLines)
+    array.clear(levelLabels)
+    if showTPSL
+        for i = 0 to 5
+            float level = i == 0 ? trade.entry : i == 1 ? trade.initialStop : i == 2 ? trade.tp1 : i == 3 ? trade.tp2 : i == 4 ? trade.tp3 : trade.stop
+            color col = i == 0 ? #2979FF : i == 1 ? bearColor : i == 5 ? color.orange : bullColor
+            array.push(levelLines, line.new(trade.entryTime, level, levelRightTime, level, xloc = xloc.bar_time, color = i == 5 and not showTrail ? na : col, style = i == 0 or i == 1 ? line.style_solid : line.style_dashed))
+            array.push(levelLabels, label.new(levelRightTime, level, "", xloc = xloc.bar_time, style = label.style_label_left, color = color.new(col, 25), textcolor = color.white, size = size.tiny))
+if barstate.islast and array.size(levelLines) > 0
+    int right = levelRightTime
+    for i = 0 to 5
+        line ln = array.get(levelLines, i)
+        label lb = array.get(levelLabels, i)
+        float level = i == 0 ? trade.entry : i == 1 ? trade.initialStop : i == 2 ? trade.tp1 : i == 3 ? trade.tp2 : i == 4 ? trade.tp3 : trade.stop
+        string name = i == 0 ? "ENTRY" : i == 1 ? "INITIAL SL" : i == 5 ? "STEP SL" + (stopEvent ? " (next bar)" : "") : "TP" + str.tostring(i - 1)
+        bool hit = i == 2 ? trade.hit1 : i == 3 ? trade.hit2 : i == 4 ? trade.hit3 : false
+        line.set_xy2(ln, right, level)
+        if i == 5
+            line.set_y1(ln, level)
+        if hit
+            line.set_style(ln, line.style_solid)
+        label.set_xy(lb, right, level)
+        label.set_text(lb, i == 5 and not showTrail ? "" : name + (hit ? " ✓ " : " ") + price(level) + (trade.active ? "" : " [closed]"))
+        if i == 5 and not showTrail
+            label.set_color(lb, na)
+
+// ── Dashboard (sectioned, zebra rows, gauges, tooltips) ─────────────────────
+// Rows are collected first, then rendered into a table sized exactly to fit,
+// so sections can be toggled and the Trade section can collapse when flat.
+type Row
+    int kind = 0            // 0 data, 1 section, 2 note (merged), 3 header, 4 footer
+    string key = ""
+    string value = ""
+    color col = na
+    string tip = ""
+
+addData(array<Row> rows, string key, string value, color col, string tip) =>
+    array.push(rows, Row.new(kind = 0, key = key, value = value, col = col, tip = tip))
+addSection(array<Row> rows, string title) =>
+    array.push(rows, Row.new(kind = 1, key = title))
+addNote(array<Row> rows, string note, color col) =>
+    array.push(rows, Row.new(kind = 2, value = note, col = col))
+renderRows(array<Row> rows, string where, color headerBg) =>
+    int n = array.size(rows)
+    table tb = table.new(pos(where), 2, math.max(n, 1), bgcolor = tableBg, border_color = tableBorder, border_width = 1, frame_color = tableBorder, frame_width = 1)
+    int dataIdx = 0
+    if n > 0
+        for r = 0 to n - 1
+            Row it = array.get(rows, r)
+            if it.kind == 3
+                table.cell(tb, 0, r, it.value, text_color = headerText, bgcolor = headerBg, text_size = txtSize, text_halign = text.align_center)
+                table.merge_cells(tb, 0, r, 1, r)
+            else if it.kind == 1
+                table.cell(tb, 0, r, it.key, text_color = textMuted, bgcolor = tableRowAlt, text_size = size.tiny, text_halign = text.align_center)
+                table.merge_cells(tb, 0, r, 1, r)
+            else if it.kind == 4
+                table.cell(tb, 0, r, it.value, text_color = textMuted, bgcolor = tableBg, text_size = size.tiny, text_halign = text.align_center)
+                table.merge_cells(tb, 0, r, 1, r)
+            else
+                color rb = dataIdx % 2 == 1 ? tableRowAlt : tableBg
+                dataIdx += 1
+                if it.kind == 2
+                    table.cell(tb, 0, r, it.value, text_color = it.col, bgcolor = rb, text_size = txtSize, text_halign = text.align_center)
+                    table.merge_cells(tb, 0, r, 1, r)
+                else
+                    table.cell(tb, 0, r, it.key, text_color = textMuted, bgcolor = rb, text_size = txtSize, text_halign = text.align_left, tooltip = it.tip)
+                    table.cell(tb, 1, r, it.value, text_color = it.col, bgcolor = rb, text_size = txtSize, text_halign = text.align_left, tooltip = it.tip)
+    tb
+// Recent-form strip from the journal, newest on the right.
+formStrip() =>
+    string s = ""
+    int n = math.min(FORM_LEN, array.size(journal))
+    if n > 0
+        for j = n - 1 to 0
+            Trade jt = array.get(journal, j)
+            float r = jt.netR()
+            s += r > 1e-8 ? "▰" : r < -1e-8 ? "▱" : "▫"
+    s
+
+var table dash = na
+var table logTable = na
+var table watermark = table.new(position.bottom_center, 1, 1)
+groupText(int index) =>
+    int n = array.get(groupN, index)
+    string value = n > 0 ? fmt(array.get(groupR, index) / n) + "R" : "N/A"
+    str.tostring(n) + " trades / " + value + (n < 30 ? " [small N]" : "")
+
+// Dashboard-only evaluation. Nothing here feeds the model, and none of it uses ta.* calls,
+// so it runs on the last bar only instead of on every historical bar.
+if barstate.islast
+    int focusDir = pendingDir != 0 ? pendingDir : trade.active ? trade.dir : trendDir != 0 ? trendDir : bullScore >= bearScore ? 1 : -1
+    [_, sPlan, rPlan, _, _, _, capPlan, validPlan, originPlan] = makePlan(focusDir)
+    int liveGate = gate(focusDir, validPlan, capPlan)
+    float liveScore = focusDir == 1 ? bullScore : bearScore
+    string dataStatus = not warmed ? "Warmup " + str.tostring(bar_index) + "/" + str.tostring(warmupBars) : not volumeReady ? "Volume data missing — blocked" : not vwapReady ? "VWAP unavailable — blocked" : htfEnabled and (not htfReady or na(htfFast) or na(htfSlow)) ? "HTF warmup/missing — blocked" : not ready ? "Missing/invalid price indicators — blocked" : not hasVolume ? "Ready; no volume weights" : "Ready"
+    // Current status must not reuse a historical acceptance for an ignored crossover.
+    string signalStatus = "No new crossover"
+    if confirmedBuy or confirmedSell
+        signalStatus := lastDecision
+    else if pendingDir != 0
+        signalStatus := directionName(pendingDir) + ": " + (liveGate == 0 ? "Conditions met; awaiting bar close" : rejectReason(liveGate))
+    else if bullCross or bearCross
+        if not barstate.isconfirmed
+            signalStatus := "Unconfirmed crossover"
+        else if not dateAllowed
+            signalStatus := "Outside date window"
+        else if not warmed
+            signalStatus := "Data not ready / warmup"
+        else
+            signalStatus := lastDecision
+    float nextTP = not trade.hit1 ? trade.tp1 : not trade.hit2 ? trade.tp2 : not trade.hit3 ? trade.tp3 : na
+    float unrealizedR = trade.active ? trade.remaining * trade.dir * (close - trade.entry) / trade.risk : na
+    // Room belongs to the active position first; candidate evidence above stays separate.
+    int roomDir = trade.active ? trade.dir : focusDir
+    float roomLevel = roomDir == 1 ? above : below
+    float refRisk = trade.active ? trade.risk : rPlan
+    float roomR = not na(roomLevel) and refRisk > 0 ? math.abs(roomLevel - close) / refRisk : na
+    float estimateEntry = manualEntry > 0 ? manualEntry : close
+    float estimateStop = trade.active ? trade.stop : sPlan
+    int estimateDir = trade.active ? trade.dir : focusDir
+    float estimateRisk = estimateDir * (estimateEntry - estimateStop)
+    float estimatedCosts = sideCost(estimateEntry) + sideCost(estimateStop)
+    float riskBudget = riskMode == "Cash" ? riskCash : equityInput * riskPct / 100
+    bool calcValid = sizeEnabled and linearConfirmed and accountCurrency == syminfo.currency and estimateRisk >= syminfo.mintick and (not positiveOnly or math.min(estimateEntry, estimateStop) > 0) and (trade.active or (ready and validPlan))
+    float quantity = calcValid ? math.floor(riskBudget / ((estimateRisk + estimatedCosts) * pointValueInput) / lotStep) * lotStep : na
+    string calcStatus = not sizeEnabled ? "Off" : not linearConfirmed ? "Verify linear contract first" : accountCurrency != syminfo.currency ? "Currency mismatch: " + syminfo.currency : not calcValid ? "Invalid plan / stop side" : quantity < minQty ? "Below minimum quantity" : qtyFmt(quantity) + " units; risk " + fmt(quantity * (estimateRisk + estimatedCosts) * pointValueInput) + " " + accountCurrency
+    float estimatedCostR = estimateRisk > 0 ? estimatedCosts / estimateRisk : na
+    float drift = trade.risk > 0 ? trade.dir * (close - trade.entry) / trade.risk : na
+    float remainingRR = trade.active and estimateRisk > 0 and not na(nextTP) and trade.dir * (nextTP - estimateEntry) > 0 ? trade.dir * (nextTP - estimateEntry) / estimateRisk : na
+    float stopDistance = trade.active ? trade.dir * (close - trade.stop) : na
+    float targetDistance = trade.active and not na(nextTP) ? trade.dir * (nextTP - close) : na
+    string trendWord = trendDir == 1 ? "Bullish" : trendDir == -1 ? "Bearish" : "Neutral"
+    color trendCol = trendDir == 1 ? bullText : trendDir == -1 ? bearText : neutralText
+    color headerBg = trendDir == 1 ? headerBull : trendDir == -1 ? headerBear : headerFlat
+
+    if showDash
+        array<Row> rows = array.new<Row>()
+        array.push(rows, Row.new(kind = 3, value = "◆ PrecSniper · " + trendWord))
+
+        // ── Market ──
+        if showMarketSec
+            addSection(rows, "— Market —")
+            addData(rows, "Regime", regimeName, trendCol, "ADX regime and EMA alignment on the current bar.")
+            addData(rows, "HTF", htfEnabled ? htfInput + " " + directionName(htfBias) + " · " + htfMode + (na(htfClosedAt) ? "" : " · closed " + str.format_time(htfClosedAt, "MM-dd HH:mm", sessionTZ)) : "Off", htfBias == 1 ? bullText : htfBias == -1 ? bearText : textColor, "Bias of the last CLOSED higher-timeframe bar. Soft score adds 1.5 points; Hard filter blocks opposing entries.")
+            addData(rows, "Volatility", volatility + " " + fmt(volRatio) + "x · ATR " + fmt(close != 0 ? atr / math.abs(close) * 100 : na) + "% · " + volMode, highVol ? bearText : textColor, "ATR relative to its " + str.tostring(atrMeanLen) + "-bar mean, ATR as % of price, and the high-volatility action.")
+            addData(rows, "Session", sessionMode == "Off" ? "Off" : (inSession ? "Inside" : "Outside") + " · " + sessionTZ + " · " + sessionMode, textColor, "Trading window state in the session timezone.")
+            addData(rows, "Data", dataStatus + (trade.ambiguous ? " · last trade OHLC ambiguity" : ""), ready ? textColor : bearText, "Warmup and data readiness. Entries are blocked until Ready.")
+            addData(rows, "Profile", preset + " · EMA " + str.tostring(fastLen) + "/" + str.tostring(slowLen) + "/" + str.tostring(trendLen) + " · RSI " + str.tostring(rsiLen) + " · ATR " + str.tostring(atrLen) + " · SL " + fmt(slMult) + "x", textMuted, "Effective parameter profile after preset resolution.")
+
+        // ── Signal ──
+        if showSignalSec
+            addSection(rows, "— Signal —")
+            float requiredPts = requiredRatio * scoreMax
+            addData(rows, "Candidate", signalStatus, liveGate == 0 ? bullText : textMuted, "Crossover candidate state and the first failing gate, evaluated live.")
+            addData(rows, "Evidence", fmt(liveScore) + "/" + fmt(scoreMax) + "  " + buildGauge(liveScore, scoreMax, 8) + " · need " + fmt(requiredPts) + (barstate.isconfirmed ? " [closed]" : " [live]"), liveScore + 1e-9 >= requiredPts ? bullText : neutralText, "Optional evidence for the focused side vs the required minimum. Grade thresholds: A+ 80%, A 65%, B 50%.")
+            addData(rows, "Plan", directionName(focusDir) + " · SL " + price(sPlan) + " · risk " + price(rPlan) + " · " + originPlan, validPlan ? textColor : bearText, "Stop, initial risk and stop origin the model would use for an entry at the current close.")
+            addData(rows, "Est. cost", fmt(estimatedCostR) + "R" + (estimatedCostR >= costWarningR ? " [high vs stop]" : "") + " · manual inputs", estimatedCostR >= costWarningR ? bearText : textColor, "Round-trip commission, spread and slippage as a fraction of initial risk.")
+            addData(rows, "Last decision", lastDecision, textMuted, "Outcome of the most recent candidate.")
+
+        // ── Trade (collapses when flat) ──
+        if showTradeSec
+            addSection(rows, "— Trade —")
+            if trade.active
+                bool stepped = trade.stop != trade.initialStop
+                addData(rows, "Position", directionName(trade.dir) + " · " + str.tostring(bar_index - trade.entryBar) + " bars · " + fmt(trade.remaining * 100) + "% left", trade.dir == 1 ? bullText : bearText, "Open model position and the remaining fraction after partial exits.")
+                addData(rows, "Entry", price(trade.entry) + " · " + trade.grade + " · " + fmt(trade.score) + "/" + fmt(trade.maxScore) + " · " + trade.origin, textColor, "Entry price, grade, evidence and stop origin at entry. " + (na(trade.entryTime) ? "" : str.format_time(trade.entryTime, "yyyy-MM-dd HH:mm", sessionTZ) + " " + sessionTZ))
+                addData(rows, "Stop", (stepped ? "Step @ " : "") + price(trade.stop) + (stopEvent ? " (next bar)" : "") + " · initial " + price(trade.initialStop) + (trailInput ? " · step ON" : " · step OFF"), stepped ? neutralText : bearText, "Effective stop. Step changes apply from the NEXT bar. Entry-price stop is not net breakeven after costs.")
+                addData(rows, "TP1", (trade.hit1 ? "✓ " : "") + price(trade.tp1) + " · " + fmt(tp1Pct) + "%", trade.hit1 ? bullText : textColor, "✓ = touched. Percent = partial close of the original position.")
+                addData(rows, "TP2", (trade.hit2 ? "✓ " : "") + price(trade.tp2) + " · " + fmt(tp2Pct) + "%", trade.hit2 ? bullText : textColor, "✓ = touched. Percent = partial close of the original position.")
+                addData(rows, "TP3", (trade.hit3 ? "✓ " : "") + price(trade.tp3) + (fullTP3 ? " · closes rest" : " · holds rest"), trade.hit3 ? bullText : textColor, "Final target. With 'Close remaining position at TP3' the trade ends here.")
+                addData(rows, "Unrealized", fmt(unrealizedR) + "R gross · realized " + fmt(trade.netR()) + "R net", unrealizedR > 0 ? bullText : unrealizedR < 0 ? bearText : textColor, "Open P/L in R on the remaining fraction, and realized net R from partial fills.")
+                addData(rows, "Distances", price(stopDistance) + " / " + price(targetDistance) + " · " + fmt(stopDistance / trade.risk) + "R / " + fmt(targetDistance / trade.risk) + "R · " + fmt(close != 0 ? stopDistance / math.abs(close) * 100 : na) + "% / " + fmt(close != 0 ? targetDistance / math.abs(close) * 100 : na) + "%", textColor, "Live distance to the stop / to the next target: price, R, percent.")
+                addData(rows, "Room", directionName(roomDir) + " · " + price(roomLevel) + " · " + fmt(roomR) + "R" + (na(roomLevel) ? " (none tracked)" : ""), textColor, "Nearest known level in the trade direction and its distance in R from live price.")
+                addData(rows, "Drift", fmt(drift) + "R" + (drift >= lateR ? " [extended]" : "") + " · hyp. R:R " + fmt(remainingRR), drift >= lateR ? neutralText : textColor, "Price drift from entry in R. Hypothetical R:R = next target vs stop for an entry at the live price, not the original trade R.")
+            else
+                addNote(rows, "Flat · waiting for a crossover", textMuted)
+                if trade.dir != 0
+                    float lastR = trade.netR()
+                    addData(rows, "Last trade", directionName(trade.dir) + " · " + trade.reason + " · " + fmt(lastR) + "R" + (trade.ambiguous ? " [amb]" : ""), lastR > 0 ? bullText : lastR < 0 ? bearText : textColor, "Most recent closed model trade.")
+                addData(rows, "Room", directionName(roomDir) + " [plan] · " + price(roomLevel) + " · " + fmt(roomR) + "R" + (na(roomLevel) ? " (none tracked)" : ""), textColor, "Nearest known level for the planned side and its distance in planned R.")
+
+        // ── Sizing (manual estimate, only when enabled) ──
+        if sizeEnabled
+            addSection(rows, "— Sizing —")
+            addData(rows, "Estimate", calcStatus, calcValid ? textColor : textMuted, "Manual position estimate for linear instruments. Never rewrites the model trade.")
+            addData(rows, "Size / notional", calcValid and quantity >= minQty ? qtyFmt(quantity) + " / " + fmt(quantity * math.abs(estimateEntry) * pointValueInput) + " " + accountCurrency + " (not margin)" : "N/A", textMuted, "Quantity from the risk budget, and notional value at the estimate entry.")
+
+        // ── Stats ──
+        if showStats
+            addSection(rows, "— Stats —")
+            float winRate = total > 0 ? 100.0 * wins / total : na
+            string form = formStrip()
+            addData(rows, "Closed", str.tostring(total) + " · " + str.tostring(wins) + "W / " + str.tostring(losses) + "L / " + str.tostring(breakevens) + "BE", textColor, "Closed model trades in the requested window.")
+            addData(rows, "Win rate", total > 0 ? fmt(winRate) + "%  " + buildGauge(winRate, 100, 8) : "N/A", total == 0 ? textMuted : winRate >= 55 ? bullText : winRate >= 45 ? neutralText : bearText, "Wins / closed trades. Net R above zero counts as a win.")
+            addData(rows, "Expectancy / PF", total > 0 ? fmt(totalR / total) + "R / " + (grossLoss > 0 ? fmt(grossWin / grossLoss) : grossWin > 0 ? "no losses" : "N/A") : "N/A", total == 0 ? textMuted : totalR > 0 ? bullText : totalR < 0 ? bearText : textColor, "Average net R per closed trade, and gross profit / gross loss.")
+            addData(rows, "Net / max DD", fmt(totalR) + "R / " + fmt(maxDrawdownR) + "R", totalR > 0 ? bullText : totalR < 0 ? bearText : textColor, "Net total R and the largest peak-to-trough drop of closed-trade equity.")
+            addData(rows, "Avg win / loss / streak", fmt(wins > 0 ? grossWin / wins : na) + "R / " + fmt(losses > 0 ? grossLoss / losses : na) + "R / " + str.tostring(maxLossStreak), textColor, "Average winning R, average losing R, longest losing streak.")
+            addData(rows, "Duration / ambiguous", fmt(total > 0 ? 1.0 * totalDuration / total : na) + " bars / " + str.tostring(ambiguousTrades), textColor, "Average bars per trade, and trades where stop and target touched on the same bar (old stop first).")
+            addData(rows, "TP1 / TP2 reach", fmt(total > 0 ? 100.0 * reachedTP1 / total : na) + "% / " + fmt(total > 0 ? 100.0 * reachedTP2 / total : na) + "%", textColor, "Share of closed trades that touched TP1 / TP2.")
+            addData(rows, "MFE / MAE", fmt(total > 0 ? totalMFE / total : na) + "R / " + fmt(total > 0 ? totalMAE / total : na) + "R", textMuted, "Average maximum favorable / adverse excursion, lower bounds from OHLC.")
+            addData(rows, "Form", form == "" ? "N/A" : form, textColor, "Last " + str.tostring(FORM_LEN) + " closed trades, newest on the right. ▰ win · ▱ loss · ▫ break-even.")
+            addData(rows, "Window / costs", str.format_time(startInput, "yyyy-MM-dd", sessionTZ) + ".." + str.format_time(endInput, "yyyy-MM-dd", sessionTZ) + " · " + (commissionPct + spreadTicks + slipTicks > 0 ? "manual costs ON" : "costs OFF"), textMuted, "Requested statistics window and whether manual costs are applied.")
+
+        // ── Diagnostics ──
+        if showDiagSec
+            addSection(rows, "— Diagnostics —")
+            addData(rows, "Factors", "Trend/RSI/MACD/Accel/ADX = 1 each · Vol/VWAP = 1 · soft HTF = 1.5", textMuted, "Weights of the optional evidence factors for the focused side.")
+            addData(rows, "Trend / RSI / MACD / accel", (focusDir * (close - emaTrend) > 0 ? "1" : "0") + " / " + ((focusDir == 1 ? rsi > 50 and rsi < RSI_UPPER : rsi < 50 and rsi > RSI_LOWER) ? "1" : "0") + " / " + (focusDir * hist > 0 ? "1" : "0") + " / " + (focusDir * (hist - hist[1]) > 0 ? "1" : "0"), textColor, "Live factor states for the focused side.")
+            addData(rows, "ADX / volume / VWAP / HTF", (trending and focusDir * (diPlus - diMinus) > 0 ? "1" : "0") + " / " + (hasVolume ? volAbove ? "1" : "0" : "N/A") + " / " + (vwapEnabled and hasVolume ? focusDir * (close - vwap) > 0 ? "1" : "0" : "OFF") + " / " + (htfEnabled ? directionName(htfBias) : "OFF"), textColor, "Live factor states for the focused side.")
+            addData(rows, "Candidates / accepted / pending", str.tostring(candidates) + " / " + str.tostring(accepted) + " / " + (pendingDir != 0 ? "1" : "0"), textColor, "Crossover candidates seen, entries accepted, candidate pending now.")
+            string reasons = ""
+            for k = 0 to 11
+                int n = array.get(rejected, k)
+                if n > 0
+                    reasons += (reasons == "" ? "" : "; ") + (k == 0 ? "opposite cross/already open" : rejectReason(k)) + "=" + str.tostring(n)
+            addData(rows, "Rejections", reasons == "" ? "None" : reasons, textMuted, "One final rejection reason per candidate.")
+            addData(rows, "Long / Short", groupText(0) + " | " + groupText(1), textColor, "Count and average net R by direction.")
+            addData(rows, "A+ / A", groupText(2) + " | " + groupText(3), textColor, "Count and average net R by grade.")
+            addData(rows, "B / C", groupText(4) + " | " + groupText(5), textColor, "Count and average net R by grade.")
+            addData(rows, "Range / Trend / Mixed", groupText(6) + " | " + groupText(7) + " | " + groupText(8), textColor, "Count and average net R by regime at entry.")
+            addData(rows, "First entry / last exit", (na(firstEntryAt) ? "N/A" : str.format_time(firstEntryAt, "yyyy-MM-dd", sessionTZ)) + " / " + (na(lastExitAt) ? "N/A" : str.format_time(lastExitAt, "yyyy-MM-dd", sessionTZ)), textMuted, "Observed span of model trades on the loaded history.")
+
+        array.push(rows, Row.new(kind = 4, value = "Precision Sniper · " + VERSION + " · model, not broker fills"))
+        if not na(dash)
+            table.delete(dash)
+        dash := renderRows(rows, dashPos, headerBg)
+
+    // ── Journal (same palette: tinted header, zebra rows, frame) ──
+    if showJournal
+        int shown = math.min(journalRows, array.size(journal))
+        if not na(logTable)
+            table.delete(logTable)
+        logTable := table.new(pos(journalPos), 7, shown + (shown == 0 ? 3 : 2), bgcolor = tableBg, border_color = tableBorder, border_width = 1, frame_color = tableBorder, frame_width = 1)
+        table.cell(logTable, 0, 0, "◆ Recent model trades", text_color = headerText, bgcolor = headerBg, text_size = txtSize, text_halign = text.align_center)
+        table.merge_cells(logTable, 0, 0, 6, 0)
+        array<string> headers = array.from("Entry " + sessionTZ, "Side / grade", "Entry", "Exit", "Reason", "Bars", "Net R")
+        for col = 0 to 6
+            table.cell(logTable, col, 1, array.get(headers, col), bgcolor = tableRowAlt, text_color = textMuted, text_size = size.tiny, text_halign = text.align_center)
+        if shown == 0
+            table.cell(logTable, 0, 2, "No closed model trades yet", bgcolor = tableBg, text_color = textMuted, text_size = txtSize, text_halign = text.align_center)
+            table.merge_cells(logTable, 0, 2, 6, 2)
+        else
+            for j = 0 to shown - 1
+                Trade item = array.get(journal, j)
+                float itemR = item.netR()
+                color rb = j % 2 == 1 ? tableRowAlt : tableBg
+                color rc = itemR > 0 ? bullText : itemR < 0 ? bearText : textColor
+                array<string> cells = array.from(str.format_time(item.entryTime, "MM-dd HH:mm", sessionTZ), directionName(item.dir) + " " + item.grade, price(item.entry), price(item.exitPrice), item.reason + (item.ambiguous ? " [amb]" : ""), str.tostring(item.exitBar - item.entryBar), fmt(itemR) + "R")
+                for col = 0 to 6
+                    table.cell(logTable, col, j + 2, array.get(cells, col), bgcolor = rb, text_color = col == 6 ? rc : textColor, text_size = txtSize, text_halign = col == 0 or col == 4 ? text.align_left : text.align_right)
+    if showWatermark
+        table.cell(watermark, 0, 0, "WillyAlgoTrader · " + VERSION + " · model, not broker fills", text_color = wmColor, text_size = size.normal, text_halign = text.align_center)

@@ -1,0 +1,40 @@
+//@version=5
+// @title: Volume Support and Resistance
+// @description: Detects high-volume bars to project support resistance levels and trade breakout continuation.
+strategy("Volume-Based Support/Resistance", "Volume", false)
+// Live indicators
+macdFast = input.int(12, "MACD Fast", minval=1)
+macdSlow = input.int(26, "MACD Slow", minval=1)
+macdSignal = input.int(9, "MACD Signal", minval=1)
+rsiPeriod = input.int(14, "RSI Period", minval=1)
+stochPeriod = input.int(14, "Stoch Period", minval=1)
+stochKSmooth = input.int(3, "Stoch %K", minval=1)
+stochDSmooth = input.int(3, "Stoch %D", minval=1)
+
+// --- Strategy Inputs ---
+vol_threshold_mult = input.float(1.5, "Volume Threshold Multiplier")
+
+// --- Logic to Find High Volume Bars ---
+avg_volume = ta.sma(volume, rsiPeriod)
+high_volume = volume > avg_volume * vol_threshold_mult
+
+// --- Drawing High-Volume Resistance/Support ---
+var last_high_vol_high = 0.0
+var last_high_vol_low = 0.0
+
+if (high_volume)
+    last_high_vol_high := high
+    last_high_vol_low := low
+    
+plot(last_high_vol_high != 0 ? last_high_vol_high : na, "High Vol Resistance", color = color.new(color.blue, 0), style = plot.style_linebr, linewidth = 2)
+plot(last_high_vol_low != 0 ? last_high_vol_low : na, "High Vol Support", color = color.new(color.green, 0), style = plot.style_linebr, linewidth = 2)
+
+// --- Simplified Entry/Exit ---
+long_condition = close > last_high_vol_high[1]
+short_condition = close < last_high_vol_low[1]
+
+if (long_condition)
+    strategy.entry("Volume Buy", strategy.long)
+
+if (short_condition)
+    strategy.entry("Volume Sell", strategy.short)

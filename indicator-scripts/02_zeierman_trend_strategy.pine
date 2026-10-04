@@ -1,0 +1,141 @@
+// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)
+// https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+// ~~ © Zeiierman {
+//@version=6
+// @title: Dynamic Trailing Strategy (Zeiierman)
+// @description: Dynamic Trailing (Zeiierman) — strategy version with entries/exits
+
+strategy('Dynamic Trailing Strategy (Zeiierman)', 'ZTrail', overlay = true)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Settings {
+// @scale: len, Smooth, atrLen, atrSmooth, plotSmooth
+// ~~ Tooltips
+t1 = 'The "Mult" setting adjusts the multiplier used in the ATR calculation for defining the deviation distance for dynamic support and resistance levels. Increasing this value widens the distance, potentially reducing signal sensitivity and smoothing fluctuations. Decreasing it narrows the distance, which may increase signal sensitivity and the number of trading signals.\n\nThe "Len" setting specifies the core period length used in the dynamic support and resistance calculation. A higher value will make the indicator slower to react to price changes, smoothing out the results and potentially reducing market noise. A lower value makes the indicator more responsive to price changes, which may increase noise and trading signal frequency.'
+t2 = 'This setting controls the smoothness of the dynamic support and resistance lines by defining the length of the simple moving average (SMA) applied to them. Increasing the "Smoothness" value will result in smoother lines, which may help in identifying more stable trends. Decreasing the value makes the lines more responsive to recent price changes, which can be useful for short-term trading strategies.'
+t3 = 'This setting adjusts the width of the "Cloud" zone, which is determined by the ATR and the specified cloud width multiplier. Increasing this value expands the cloud, providing a wider buffer around the trend calculation, which could be interpreted as increased volatility or uncertainty in the market direction. Decreasing the value contracts the cloud, indicating a narrower range of uncertainty or volatility.'
+t4 = 'This controls how aggressive the GD curve is. Lower magnitude values make the line more stable while still preserving dynamic movement.'
+t5 = 'This smooths the ATR input before it is used throughout the indicator. Higher values produce more stable behavior.'
+t6 = 'This adds a final light smoothing pass to the plotted trailing line and cloud, making the visual output less twitchy without changing the internal logic too much.'
+t7 = 'When enabled, a close back through the adaptive trailing line exits the position early, without waiting for a full supertrend reversal. When disabled, positions are only closed by an opposite-direction signal (pure reversal).'
+
+mult = input.float(7.5, step = 0.1, minval = 1, title = 'Mult', group = 'Settings', inline = 'mult')
+len = input.int(26, minval = 2, title = 'Len', group = 'Settings', inline = 'mult', tooltip = t1)
+Smooth = input.int(15, minval = 1, step = 1, title = 'Smoothness', group = 'Settings', tooltip = t2)
+gdFactor = input.float(-1.2, step = 0.1, title = 'GD Factor', group = 'Settings', tooltip = t4)
+atrLen = input.int(100, minval = 1, title = 'ATR Length', group = 'Settings', inline = 'atr')
+atrSmooth = input.int(20, minval = 1, title = 'ATR Smoothing', group = 'Settings', inline = 'atr', tooltip = t5)
+plotSmooth = input.int(3, minval = 1, title = 'Plot Smoothing', group = 'Settings', tooltip = t6)
+useTrailExit = input.bool(true, title = 'Early Trail Exit', group = 'Trade', tooltip = t7)
+
+Cloudwidth = input.float(1.00, step = 0.5, minval = 0, title = 'Cloud width', group = 'Style', inline = 'Style')
+upcol = input.color(#f23645, title = '', group = 'Style', inline = 'Style')
+dncol = input.color(#089981, title = '', group = 'Style', inline = 'Style', tooltip = t3)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ ATR calculation {
+ATR(src, l) =>
+    tr = math.max(src[1] - math.min(low, src[1]), math.max(high - low, src[1] - high))
+    ta.sma(tr, l)
+
+rawAtr = ATR(hl2, atrLen)
+atr = ta.ema(rawAtr, atrSmooth)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Supertrend calculation {
+supertrend(factor) =>
+    src = hl2
+    u = src + factor * atr
+    l = src - factor * atr
+    prevL = nz(l[1])
+    prevU = nz(u[1])
+    l := l > prevL or close[1] < prevL ? l : prevL
+    u := u < prevU or close[1] > prevU ? u : prevU
+    d = int(na)
+    t = float(na)
+    prevT = t[1]
+    d := na(atr[1]) ? 1 : prevT == prevU ? close > u ? -1 : 1 : close < l ? 1 : -1
+    t := d == -1 ? l : u
+    [t, d]
+
+[t, d] = supertrend(mult)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ GD / TEMA-style calculation {
+gd(src, l, f) =>
+    e1 = ta.hma(src, l)
+    e2 = ta.hma(e1, l)
+    e3 = ta.hma(e2, l)
+    c1 = -f * f * f
+    c2 = 3 * f * f + 3 * f * f * f
+    c3 = -6 * f * f - 3 * f - 3 * f * f * f
+    c4 = 1 + 3 * f + f * f * f + 3 * f * f
+    c1 * e3 + c2 * e2 + c3 * e1 + c4 * src
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Dynamic Support and Resistance {
+dev = atr * mult
+up = ta.sma(gd(high, len, gdFactor) + dev, Smooth)
+down = ta.sma(gd(low, len, gdFactor) - dev, Smooth)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Trend calculation {
+Trends(close_, t, down, up, atr, Cloudwidth) =>
+    tA = 0.0
+    tA := close_ > t ? math.avg(t, down, ta.lowest(close_, len) + atr) : math.avg(t, up, ta.highest(close_, len) + atr)
+    tZ = 0.0
+    tZ := close_ > tA ? tA + atr * Cloudwidth : tA - atr * Cloudwidth
+    [tA, tZ]
+
+[tA, tZ] = Trends(close, t, down, up, atr, Cloudwidth)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Final smoothing for plotting {
+tA_plot = ta.ema(tA, plotSmooth)
+tZ_plot = ta.ema(tZ, plotSmooth)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Strategy execution {
+// Regime flips: supertrend direction d changes (-1 = up, 1 = down)
+bullFlip = d == -1 and d[1] != -1
+bearFlip = d == 1 and d[1] != 1
+
+// Re-entries: after an early trail exit, rejoin when price reclaims the
+// trailing line while the supertrend regime is still intact
+reLong = d == -1 and ta.crossover(close, tA_plot)
+reShort = d == 1 and ta.crossunder(close, tA_plot)
+
+longCondition = bullFlip or reLong
+shortCondition = bearFlip or reShort
+
+// Exits: close back through the adaptive trailing line = trailing stop hit
+longExit = useTrailExit and ta.crossunder(close, tA_plot)
+shortExit = useTrailExit and ta.crossover(close, tA_plot)
+
+if longCondition
+    strategy.entry('Long', strategy.long)
+
+if shortCondition
+    strategy.entry('Short', strategy.short)
+
+if longExit
+    strategy.close('Long', comment = 'Trail Exit')
+
+if shortExit
+    strategy.close('Short', comment = 'Trail Exit')
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Plot {
+sig = d != 0
+trendColor = close > tA_plot ? dncol : upcol
+
+sigL = plot(sig and (d < 0 and d[1] < 0 or d > 0 and d[1] > 0) ? tA_plot : na, title = 'Smart Trailing', color = trendColor, style = plot.style_linebr)
+zoneL = plot(sig ? tZ_plot : na, title = 'Cloud', color = color.new(color.gray, 100), display = display.none, style = plot.style_linebr)
+fill(sigL, zoneL, title = 'Cloud', color = close > tA_plot ? color.new(dncol, 80) : color.new(upcol, 80))
+
+plotshape(longCondition, title = 'Long Entry', style = shape.triangleup, location = location.belowbar, color = dncol, size = size.small, text = 'Long', textcolor = dncol)
+plotshape(shortCondition, title = 'Short Entry', style = shape.triangledown, location = location.abovebar, color = upcol, size = size.small, text = 'Short', textcolor = upcol)
+plotshape(longExit, title = 'Long Exit', style = shape.xcross, location = location.belowbar, color = color.gray, size = size.tiny)
+plotshape(shortExit, title = 'Short Exit', style = shape.xcross, location = location.abovebar, color = color.gray, size = size.tiny)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}

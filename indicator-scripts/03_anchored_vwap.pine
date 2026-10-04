@@ -1,0 +1,1391 @@
+//@version=5
+// @title: STRUCTURE-ANCHORED VWAP [WillyAlgoTrader]
+// @description: It's an analysis tool, not a trading bot. It maps structure, measures the average price participants actually paid, and lays out the risk — the trade decision stays yours
+// ══════════════════════════════════════════════════════════
+// STRUCTURE-ANCHORED VWAP [WillyAlgoTrader]
+// ══════════════════════════════════════════════════════════
+// Author:  Willy | WillyAlgoTrader
+// Version: 1.1.0
+// ══════════════════════════════════════════════════════════
+
+indicator(
+     title               = "Structure-Anchored VWAP [WillyAlgoTrader]",
+     shorttitle          = "SA-VWAP [WAT]",
+     overlay             = true,
+     max_bars_back       = 5000,
+     max_lines_count     = 500,
+     max_labels_count    = 500,
+     max_polylines_count = 100)
+
+// ══════════════════════════════════════════════════════════
+// 1. CONSTANTS
+// ══════════════════════════════════════════════════════════
+GRP_MAIN   = "⚙️ Main Settings"
+GRP_VWAP   = "📐 Anchored VWAP"
+GRP_BANDS  = "📏 Deviation Bands"
+GRP_SIGNAL = "🎯 Signals & Levels"
+GRP_RISK   = "🛡️ Risk Management"
+GRP_VISUAL = "🎨 Visual"
+GRP_DASH   = "📊 Dashboard"
+GRP_ALERT  = "🔔 Alerts"
+GRP_COLORS = "🎨 Colors"
+
+INDICATOR_VERSION = "v1.1.0"
+INDICATOR_NAME    = "Structure-Anchored VWAP"
+BRAND_NAME        = "WillyAlgoTrader"
+
+LINE_FORWARD_BARS = 20
+LINE_UPDATE_BARS  = 5
+LABEL_OFFSET_BARS = 1
+BE_DIM_TRANSP     = 70
+FORM_LEN          = 10   // recent-form strip length
+
+// ══════════════════════════════════════════════════════════
+// 2. INPUTS
+// ══════════════════════════════════════════════════════════
+
+// ── Main Settings ───────────────────────────────────────────
+// @scale: pivLInput, pivRInput, atrLenInput, fastLenInput, halfLifeInput, atrLenRiskInput, retestMinAwayInput
+pivLInput = input.int(55, "Pivot strength   left", minval = 1, maxval = 200, inline = "piv", group = GRP_MAIN)
+pivRInput = input.int(55, "right", minval = 1, maxval = 200, inline = "piv", group = GRP_MAIN,
+     tooltip = "A swing high needs this many lower highs on each side (same idea for lows).\n" +
+               "• Right = confirmation delay in bars — a pivot is only known that many bars later\n" +
+               "• 5/5 scalping | 20/20 intraday | 55/55 default, large swings\n" +
+               "• Higher = fewer, more significant legs")
+
+minAmpInput = input.float(1.5, "Minimum swing size (x ATR)", minval = 0.0, maxval = 10.0, step = 0.25, group = GRP_MAIN,
+     tooltip = "A new pivot must sit at least this far from the previous opposite pivot.\n" +
+               "• Filters noise inside ranges\n" +
+               "• 0 = off | 1.5 = recommended | 3.0+ = only large swings")
+
+atrLenInput = input.int(13, "ATR Length", minval = 2, maxval = 100, group = GRP_MAIN,
+     tooltip = "ATR period used by the swing-size filter and the equal-high/low tolerance.\n" +
+               "• Lower = filter reacts faster to volatility changes\n• Recommended: 10-20")
+
+anchorModeInput = input.string("Swing", "Re-anchor on", options = ["Swing", "Structure break", "Fast", "Manual"], group = GRP_MAIN,
+     tooltip = "Swing: a new leg starts at every confirmed pivot (delay = right bars).\n" +
+               "Structure break: a new leg starts only when price closes beyond the previous swing (BOS); " +
+               "the anchor is the extreme that preceded the break. Fewer, cleaner legs.\n" +
+               "Fast: no confirmation. The bar printing the highest high (lowest low) of the lookback is a new " +
+               "extreme; the leg flips as soon as an extreme opposite to the previous one appears and is anchored " +
+               "at that previous extreme. Immediate reaction, more sensitive to noise.\n" +
+               "Manual: one leg from the date and time below — behaves like the built-in Anchored VWAP tool.")
+
+fastLenInput = input.int(30, "Fast mode: extreme lookback (bars)", minval = 2, maxval = 500, group = GRP_MAIN,
+     tooltip = "Used by the Fast mode only.\n• Larger = fewer, bigger legs\n• Smaller = flips more often")
+
+eqTolInput = input.float(0.1, "Equal high/low tolerance (x ATR)", minval = 0.0, maxval = 2.0, step = 0.05, group = GRP_MAIN,
+     tooltip = "Two pivots closer than this are labelled EQH / EQL instead of HH / LL.\n" +
+               "• 0 = never label equal highs/lows\n• Recommended: 0.05-0.25")
+
+manualTimeInput = input.time(timestamp("2026-09-01 00:00 +0000"), "Manual anchor (date & time)", group = GRP_MAIN,
+     tooltip = "Manual mode only. The leg starts at the first bar at or after this time.\n" +
+               "Shown in the chart's timezone, so 00:00 UTC appears as 05:00 on a UTC+5 chart.")
+
+// ── Anchored VWAP ───────────────────────────────────────────
+srcInput = input.source(hl2, "Price source", group = GRP_VWAP,
+     tooltip = "Price used inside the VWAP.\n" +
+               "• hl2 = (H+L)/2 — matches the built-in Anchored VWAP tool\n" +
+               "• hlc3 = typical price, gives closes more weight\n• close = most reactive")
+
+weightModeInput = input.string("Cumulative", "Weighting", options = ["Cumulative", "Half-life"], group = GRP_VWAP,
+     tooltip = "Cumulative: a true anchored VWAP — every bar of the leg keeps its full weight.\n" +
+               "Half-life: older bars fade, their weight halves every N bars. Hugs price on long legs; " +
+               "not a textbook VWAP, but useful on instruments without volume.")
+
+halfLifeInput = input.int(21, "Half-life (bars)", minval = 1, maxval = 500, group = GRP_VWAP,
+     tooltip = "Half-life weighting only. After this many bars a bar's weight is halved.\n" +
+               "• Lower = line clings to price\n• Higher = closer to a plain VWAP")
+
+clampVolInput = input.bool(true, "Clamp volume spikes at", inline = "clamp", group = GRP_VWAP)
+clampMultInput = input.float(4.0, "x median", minval = 1.0, maxval = 50.0, step = 0.5, inline = "clamp", group = GRP_VWAP,
+     tooltip = "Bars with volume above N x the 50-bar median are counted at the cap, so a single print " +
+               "cannot drag the whole VWAP.\n• 4 = recommended for crypto\n• Turn off for clean futures data")
+
+maxLegBarsInput = input.int(4000, "Max leg length (bars)", minval = 100, maxval = 4900, group = GRP_VWAP,
+     tooltip = "A leg longer than this rolls its anchor forward one bar at a time, so the calculation " +
+               "stays bounded on very old anchors. Lower it if the script feels slow.")
+
+// ── Deviation Bands ─────────────────────────────────────────
+showB1Input = input.bool(true, "Band 1", inline = "b1", group = GRP_BANDS)
+mult1Input = input.float(0.5, "Sigma", minval = 0.1, maxval = 10.0, step = 0.1, inline = "b1", group = GRP_BANDS,
+     tooltip = "Inner band, in volume-weighted standard deviations of price around the anchored VWAP, " +
+               "measured over the leg itself.\n• 0.5 = value area edge\n• 1.0 = classic 1 sigma")
+
+showB2Input = input.bool(false, "Band 2", inline = "b2", group = GRP_BANDS)
+mult2Input = input.float(2.0, "Sigma", minval = 0.1, maxval = 10.0, step = 0.1, inline = "b2", group = GRP_BANDS,
+     tooltip = "Outer band. Also defines the Premium / Discount extremes used by the dashboard and alerts.\n" +
+               "• 2.0 = statistically stretched\n• 2.5-3.0 = only true extremes")
+
+fillTInput = input.int(90, "Fill transparency", minval = 50, maxval = 99, step = 1, group = GRP_BANDS,
+     tooltip = "Transparency of the band fill.\n• 90 = subtle (recommended)\n• 99 = outline only")
+
+// ── Signals & Levels ────────────────────────────────────────
+retestMinAwayInput = input.int(5, "Bars away before a retest counts", minval = 1, maxval = 100, group = GRP_SIGNAL,
+     tooltip = "Price must stay on the leg's side of the VWAP, outside the touch tolerance, for this many " +
+               "bars before a touch counts as a retest entry.\n• Higher = fewer, cleaner signals")
+
+retestTolInput = input.float(0.25, "Touch tolerance (x sigma)", minval = 0.0, maxval = 3.0, step = 0.05, group = GRP_SIGNAL,
+     tooltip = "How close price must come to the VWAP to count as a touch, in sigma.\n" +
+               "• 0 = the bar must cross the line exactly\n• 0.25 = recommended")
+
+showMemoInput = input.bool(true, "VWAP memory levels", group = GRP_SIGNAL,
+     tooltip = "When a leg ends, its last VWAP value stays on the chart as a dashed level until price " +
+               "trades through it. Old anchored VWAPs often keep acting as support and resistance.")
+
+memoMaxInput = input.int(4, "Max memory levels", minval = 1, maxval = 20, group = GRP_SIGNAL,
+     tooltip = "How many untouched memory levels to keep. Older ones are dropped first.")
+
+memoKeepInput = input.bool(false, "Keep crossed levels (dotted)", group = GRP_SIGNAL,
+     tooltip = "On: a level price has traded through stays as a faded dotted line.\nOff: it is removed.")
+
+// ── Risk Management ─────────────────────────────────────────
+riskPresetInput = input.string("Balanced", "Risk Preset",
+     options = ["Conservative", "Balanced", "Aggressive", "Scalping", "Custom"], group = GRP_RISK,
+     tooltip = "Quick risk presets (SL ×ATR / TP1 / TP2 / TP3 in R):\n" +
+               "• Conservative: 2.5 / 1R / 2R / 4R\n" +
+               "• Balanced: 1.5 / 1R / 2R / 3R\n" +
+               "• Aggressive: 1.0 / 1.5R / 2.5R / 4R\n" +
+               "• Scalping: 0.8 / 0.8R / 1.5R / 2R\n" +
+               "• Custom: use manual inputs below")
+
+atrLenRiskInput = input.int(13, "ATR Length (SL)", minval = 5, maxval = 50, group = GRP_RISK,
+     tooltip = "ATR period for stop-loss distance.\n14 = standard on most timeframes")
+slMultInput = input.float(1.5, "SL ×ATR (Custom)", minval = 0.5, maxval = 5.0, step = 0.1, group = GRP_RISK,
+     tooltip = "Custom stop distance = ATR × this. Used only when preset = Custom")
+tp1MultInput = input.float(1.0, "TP1 ×Risk (Custom)", minval = 0.5, maxval = 5.0, step = 0.1, group = GRP_RISK,
+     tooltip = "TP1 as multiple of risk. 1.0 = 1:1 R:R")
+tp2MultInput = input.float(2.0, "TP2 ×Risk (Custom)", minval = 1.0, maxval = 10.0, step = 0.1, group = GRP_RISK,
+     tooltip = "TP2 as multiple of risk. 2.0 = 1:2 R:R")
+tp3MultInput = input.float(3.0, "TP3 ×Risk (Custom)", minval = 1.5, maxval = 15.0, step = 0.1, group = GRP_RISK,
+     tooltip = "TP3 as multiple of risk. 3.0 = 1:3 R:R")
+
+showSlTpInput = input.bool(true, "Show SL/TP Lines", group = GRP_RISK,
+     tooltip = "Draw stop and take-profit lines after each entry.\n" +
+               "Lines persist showing the last trade's outcome until the next entry.")
+showSlTpLabelsInput = input.bool(true, "Show SL/TP Labels", group = GRP_RISK,
+     tooltip = "Show price labels on the SL/TP lines")
+showPctOnLabelsInput = input.bool(true, "Show % Distance on Labels", group = GRP_RISK,
+     tooltip = "Append % distance from entry to SL/TP labels.\nExample: 'SL 78120.5 (-0.36%)'.")
+
+useBreakEvenInput = input.bool(true, "Break-Even After TP1", group = GRP_RISK,
+     tooltip = "When TP1 is hit, move stop-loss to entry price.\n" +
+               "From the next bar onward, any wick touching entry closes the\n" +
+               "trade at break-even. (TP1 still counts as a WIN.)")
+
+entryLineStyleInput = input.string("Dotted", "Entry Line Style",
+     options = ["Solid", "Dashed", "Dotted"], group = GRP_RISK,
+     tooltip = "Entry is a REFERENCE, not an action level — keep it subtle.")
+slLineStyleInput = input.string("Solid", "SL Line Style",
+     options = ["Solid", "Dashed", "Dotted"], group = GRP_RISK,
+     tooltip = "SL is the most critical risk level — keep it visually prominent.")
+tpLineStyleInput = input.string("Dashed", "TP Line Style",
+     options = ["Solid", "Dashed", "Dotted"], group = GRP_RISK,
+     tooltip = "Style for TP1/TP2/TP3.\nOn hit, a TP line turns solid teal regardless.")
+
+// ── Visual ──────────────────────────────────────────────────
+themeInput = input.string("Auto", "Theme", options = ["Auto", "Dark", "Light"], group = GRP_VISUAL,
+     tooltip = "Chart color theme.\n• Auto: detect from chart background\n• Dark / Light: force manually")
+
+showSignalsInput = input.bool(true, "Show Buy/Sell Signals", group = GRP_VISUAL,
+     tooltip = "Print Long ▲ / Short ▼ markers when a trade opens on a VWAP retest")
+
+showLabelsInput = input.bool(true, "Show HH/HL/LH/LL", inline = "lbl", group = GRP_VISUAL)
+lblSizeInput = input.string("small", "", options = ["tiny", "small", "normal"], inline = "lbl", group = GRP_VISUAL,
+     tooltip = "Label every confirmed pivot with its structure type, and its size.")
+
+labelFontSizeInput = input.string("Small", "SL/TP Label Font Size",
+     options = ["Tiny", "Small", "Normal", "Large", "Huge"], group = GRP_VISUAL,
+     tooltip = "Font size for SL/TP/Entry labels. Use Tiny for a compact look.")
+
+showBgInput = input.bool(false, "Show Leg Background", group = GRP_VISUAL,
+     tooltip = "Tint the chart background with the current leg direction. Off by default to keep candles clean.")
+
+maxLegsInput = input.int(30, "Finished legs kept on chart", minval = 1, maxval = 45, group = GRP_VISUAL,
+     tooltip = "How many completed legs stay drawn. Lower it if the chart feels crowded or slow.")
+
+showWatermarkInput = input.bool(true, "Show Watermark", group = GRP_VISUAL,
+     tooltip = "Display 'WillyAlgoTrader' watermark on chart")
+
+// ── Dashboard ───────────────────────────────────────────────
+showDashInput = input.bool(true, "Show Dashboard", group = GRP_DASH,
+     tooltip = "Master toggle for the dashboard table")
+dashPosStr = input.string("Top Right", "Dashboard Position",
+     options = ["Top Left", "Top Right", "Bottom Left", "Bottom Right", "Middle Right"],
+     group = GRP_DASH)
+showMarketSecInput = input.bool(true, "  ├ Market section", group = GRP_DASH,
+     tooltip = "Trend, Signal, Strength, Last swing, Timeframe")
+showVwapSecInput = input.bool(true, "  ├ VWAP section", group = GRP_DASH,
+     tooltip = "Anchor, VWAP value, distance in sigma and %, zone, volume balance")
+showTradeSecInput = input.bool(true, "  ├ Trade section", group = GRP_DASH,
+     tooltip = "SL, TP1-3, R:R, SL distance. Collapses to one row when flat.")
+showStatsSecInput = input.bool(true, "  └ Stats section", group = GRP_DASH,
+     tooltip = "Trades, W/L, Win Rate (+gauge), recent Form")
+
+// ── Alerts ──────────────────────────────────────────────────
+webhookInput = input.bool(false, "Webhook JSON Format", group = GRP_ALERT,
+     tooltip = "Send alerts as JSON for webhook / autotrading integrations")
+showSlHitAlertInput = input.bool(true, "Alert on SL Hit", group = GRP_ALERT,
+     tooltip = "Fire an alert when price hits the active stop-loss")
+alertTpHitInput = input.bool(false, "Alert on TP / Break-Even", group = GRP_ALERT,
+     tooltip = "Fire alerts when TP1/TP2/TP3 are touched and on break-even.")
+alertStructInput = input.bool(false, "Alert on New Leg / VWAP Cross", group = GRP_ALERT,
+     tooltip = "Fire alerts when a new leg is anchored and when price closes across the VWAP.")
+
+// ── Colors ──────────────────────────────────────────────────
+bullColorInput = input.color(#00E676, "Bull", inline = "c1", group = GRP_COLORS)
+bearColorInput = input.color(#FF5252, "Bear", inline = "c1", group = GRP_COLORS)
+lineWInput = input.int(2, "VWAP line width", minval = 1, maxval = 5, group = GRP_COLORS,
+     tooltip = "Thickness of the anchored VWAP curve. 2 = recommended.")
+
+// ══════════════════════════════════════════════════════════
+// 3. THEME DETECTION & COLORS
+// ══════════════════════════════════════════════════════════
+isDark = switch themeInput
+    "Dark"  => true
+    "Light" => false
+    =>         color.r(chart.bg_color) < 128   // Auto
+
+BULL_COLOR = bullColorInput
+BEAR_COLOR = bearColorInput
+
+BULL_TEXT    = isDark ? #00E676 : #00A152
+BEAR_TEXT    = isDark ? #FF5252 : #D32F2F
+NEUTRAL_TEXT = isDark ? #FFEB3B : #F57F17
+DISCOUNT_TEXT = isDark ? #4FC3F7 : #0277BD
+
+BULL_LABEL_TEXT = #004D25
+BEAR_LABEL_TEXT = #FFFFFF
+
+TEXT_COLOR    = isDark ? #E0E0E0                : #1A1A1A
+TEXT_MUTED    = isDark ? color.new(#9E9E9E, 0)  : color.new(#757575, 0)
+TABLE_BG      = isDark ? color.new(#131722, 5)  : color.new(#FFFFFF, 5)
+TABLE_ROW_ALT = isDark ? color.new(#1C2030, 0)  : color.new(#F0F4F8, 0)
+TABLE_BORDER  = isDark ? color.new(#2A2E39, 0)  : color.new(#D0D0D0, 0)
+HEADER_TEXT   = #FFFFFF
+WM_COLOR      = isDark ? color.new(#FFFFFF, 80) : color.new(#000000, 80)
+
+// Trend-tinted header backgrounds
+HEADER_BG_BULL = color.new(#0F6E56, 0)
+HEADER_BG_BEAR = color.new(#A32D2D, 0)
+HEADER_BG_FLAT = color.new(#2962FF, 0)
+
+// Risk-Management palette (premium, muted, theme-aware)
+SL_COLOR       = isDark ? color.new(#E57373, 0)  : color.new(#B71C1C, 0)
+TP1_COLOR      = isDark ? color.new(#66BB6A, 30) : color.new(#388E3C, 30)
+TP2_COLOR      = isDark ? color.new(#66BB6A, 40) : color.new(#388E3C, 40)
+TP3_COLOR      = isDark ? color.new(#66BB6A, 0)  : color.new(#388E3C, 0)
+ENTRY_COLOR    = isDark ? color.new(#5C8AAE, 0)  : color.new(#34495E, 0)
+TP_LABEL_COLOR = isDark ? color.new(#66BB6A, 0)  : color.new(#388E3C, 0)
+TP_HIT_COLOR   = isDark ? color.new(#4DB6AC, 0)  : color.new(#00695C, 0)
+BE_COLOR       = isDark ? color.new(#FFA726, 0)  : color.new(#E65100, 0)
+LABEL_TEXT     = isDark ? #1A1A1A                : #FFFFFF
+FORM_COLOR     = isDark ? #5C8AAE                : #34495E
+
+// ══════════════════════════════════════════════════════════
+// 4. TYPES, STATE & HELPERS
+// ══════════════════════════════════════════════════════════
+
+// Division that never crashes and never returns na by accident.
+safeDiv(float num, float den, float fallback) =>
+    den != 0 and not na(num) and not na(den) ? num / den : fallback
+
+fmtPrice(float v) =>
+    na(v) ? "—" : str.tostring(v, format.mintick)
+
+// Signed number for the dashboard: "+1.23%" / "-0.45 sigma" / "—" when na.
+fmtSigned(float v, string suffix) =>
+    na(v) ? "—" : (v >= 0 ? "+" : "") + str.tostring(v, "#.##") + suffix
+
+formatPctFromEntry(float level, float entry) =>
+    string res = ""
+    if showPctOnLabelsInput and not na(level) and not na(entry) and entry != 0
+        float pct = (level - entry) / entry * 100.0
+        string sign = pct >= 0 ? "+" : ""
+        res := " (" + sign + str.tostring(pct, "#.##") + "%)"
+    res
+
+// Unicode block gauge: filled ▰ proportional to value/maxVal across `width` cells
+buildGauge(float value, float maxVal, int width) =>
+    string result = ""
+    int filled = maxVal <= 0 ? 0 : math.round(math.min(width, math.max(0.0, value / maxVal * width)))
+    for i = 0 to width - 1
+        result += i < filled ? "▰" : "▱"
+    result
+
+lineStyleFromString(string s) =>
+    s == "Dashed" ? line.style_dashed :
+     s == "Dotted" ? line.style_dotted :
+     line.style_solid
+
+sizeFromString(string s) =>
+    s == "Tiny"   ? size.tiny :
+     s == "Small"  ? size.small :
+     s == "Normal" ? size.normal :
+     s == "Large"  ? size.large :
+     s == "Huge"   ? size.huge :
+     size.small
+
+sizeOf(string s) =>
+    s == "tiny" ? size.tiny : s == "small" ? size.small : size.normal
+
+// Structure tag for a new pivot against the previous one of the same kind.
+classify(float cur, float ref, bool isHigh, float tolAbs) =>
+    string tag = ""
+    if na(ref)
+        tag := isHigh ? "H" : "L"
+    else if math.abs(cur - ref) <= tolAbs
+        tag := isHigh ? "EQH" : "EQL"
+    else if cur > ref
+        tag := isHigh ? "HH" : "HL"
+    else
+        tag := isHigh ? "LH" : "LL"
+    tag
+
+dashPos = switch dashPosStr
+    "Top Left"     => position.top_left
+    "Top Right"    => position.top_right
+    "Bottom Left"  => position.bottom_left
+    "Bottom Right" => position.bottom_right
+    "Middle Right" => position.middle_right
+    =>                position.top_right
+
+entryLineStyle = lineStyleFromString(entryLineStyleInput)
+slLineStyle    = lineStyleFromString(slLineStyleInput)
+tpLineStyle    = lineStyleFromString(tpLineStyleInput)
+labelSize      = sizeFromString(labelFontSizeInput)
+
+// ── Types ─────────────────────────────────────────────────
+type Leg
+    int   dir                                    // +1 bullish, -1 bearish
+    int   anchor                                 // bar_index of the anchor
+    array<chart.point> trail                     // the VWAP curve
+    array<chart.point> hi1
+    array<chart.point> lo1
+    array<chart.point> hi2
+    array<chart.point> lo2
+    float anchorPx = na
+    polyline curve = na
+    polyline band1 = na
+    polyline band2 = na
+    float vwap     = na
+    float sigma    = na
+    bool  hitNow   = false
+    // live values and their committed (last confirmed bar) counterparts
+    float volUp    = 0.0
+    float volDn    = 0.0
+    int   away     = 0
+    int   retests  = 0
+    float volUpC   = 0.0
+    float volDnC   = 0.0
+    int   awayC    = 0
+    int   retestsC = 0
+
+type Memo
+    line  ln
+    float y
+    color col
+    bool  alive = true
+
+newLeg(int d, int a) =>
+    Leg.new(d, a, array.new<chart.point>(), array.new<chart.point>(), array.new<chart.point>(),
+         array.new<chart.point>(), array.new<chart.point>())
+
+// Closed contour for a band: upper edge forward, lower edge backward.
+contour(array<chart.point> top, array<chart.point> bottom) =>
+    array<chart.point> out = array.new<chart.point>()
+    for i = 0 to top.size() - 1
+        out.push(top.get(i))
+    for i = bottom.size() - 1 to 0
+        out.push(bottom.get(i))
+    out
+
+// ══════════════════════════════════════════════════════════
+// 5. WARMUP
+// ══════════════════════════════════════════════════════════
+bool settled = barstate.isconfirmed
+float atr    = nz(ta.atr(atrLenInput), 0.0)
+
+int  WARMUP_BARS = math.max(pivLInput + pivRInput, 50)
+bool isWarmedUp  = bar_index >= WARMUP_BARS
+
+// ══════════════════════════════════════════════════════════
+// 6. MARKET STRUCTURE ENGINE
+// ══════════════════════════════════════════════════════════
+float pivHi    = ta.pivothigh(high, pivLInput, pivRInput)
+float pivLo    = ta.pivotlow(low, pivLInput, pivRInput)
+int   pivBar   = bar_index - pivRInput
+float minSwing = minAmpInput * atr
+float eqTolAbs = eqTolInput * atr
+
+var int    swType     = 0                        // last confirmed swing: +1 high, -1 low, 0 none
+var float  swHi       = na
+var int    swHiBar    = na
+var float  swLo       = na
+var int    swLoBar    = na
+var float  refHi      = na                       // previous high of record, for HH / LH
+var float  refLo      = na                       // previous low of record, for HL / LL
+var label  swHiLbl    = na
+var label  swLoLbl    = na
+var string lastStruct = "—"
+
+bool hiEvent = false
+bool loEvent = false
+bool hiExt   = false                             // previous high superseded by a higher one
+bool loExt   = false
+
+if settled and not na(pivHi)
+    if swType == 1
+        if pivHi > swHi
+            swHi    := pivHi
+            swHiBar := pivBar
+            hiEvent := true
+            hiExt   := true
+    else if swType == 0 or pivHi - swLo >= minSwing
+        refHi   := swHi
+        swHi    := pivHi
+        swHiBar := pivBar
+        swType  := 1
+        hiEvent := true
+
+if settled and not na(pivLo)
+    if swType == -1
+        if pivLo < swLo
+            swLo    := pivLo
+            swLoBar := pivBar
+            loEvent := true
+            loExt   := true
+    else if swType == 0 or swHi - pivLo >= minSwing
+        refLo   := swLo
+        swLo    := pivLo
+        swLoBar := pivBar
+        swType  := -1
+        loEvent := true
+
+if hiEvent
+    string tag = classify(swHi, refHi, true, eqTolAbs)
+    lastStruct := tag
+    if hiExt
+        label.delete(swHiLbl)
+    if showLabelsInput
+        swHiLbl := label.new(swHiBar, swHi, tag, xloc.bar_index, yloc.price, color.new(color.black, 100),
+             label.style_label_down, tag == "HH" ? BULL_TEXT : NEUTRAL_TEXT, sizeOf(lblSizeInput),
+             tooltip = "Swing high " + str.tostring(swHi, format.mintick) + "\nconfirmed after " + str.tostring(pivRInput) + " bars")
+
+if loEvent
+    string tag = classify(swLo, refLo, false, eqTolAbs)
+    lastStruct := tag
+    if loExt
+        label.delete(swLoLbl)
+    if showLabelsInput
+        swLoLbl := label.new(swLoBar, swLo, tag, xloc.bar_index, yloc.price, color.new(color.black, 100),
+             label.style_label_up, tag == "LL" ? BEAR_TEXT : BULL_TEXT, sizeOf(lblSizeInput),
+             tooltip = "Swing low " + str.tostring(swLo, format.mintick) + "\nconfirmed after " + str.tostring(pivRInput) + " bars")
+
+// ── Fast extremes (Fast mode) ─────────────────────────────
+bool newHiN = high >= ta.highest(high, fastLenInput)
+bool newLoN = low  <= ta.lowest(low, fastLenInput)
+
+var int extType  = 0                             // last extreme printed: +1 high, -1 low
+var int extHiBar = na
+var int extLoBar = na
+bool fastUp = false                              // a high after a low  -> bull leg from that low
+bool fastDn = false                              // a low after a high  -> bear leg from that high
+
+if settled and (newHiN or newLoN)
+    bool bothWays = newHiN and newLoN
+    bool takeHi   = newHiN and (not bothWays or close >= open)
+    bool takeLo   = newLoN and (not bothWays or close < open)
+    if takeHi
+        extHiBar := bar_index
+        fastUp   := extType == -1
+        extType  := 1
+    if takeLo
+        extLoBar := bar_index
+        fastDn   := extType == 1
+        extType  := -1
+
+// ══════════════════════════════════════════════════════════
+// 7. ANCHORED VWAP — prefix sums & ring buffers
+// ══════════════════════════════════════════════════════════
+var bool hasVolume = false
+hasVolume := hasVolume or nz(volume, 0.0) > 0
+
+float px     = nz(srcInput, close)
+float volMed = nz(ta.median(volume, 50), 0.0)
+float wRaw   = hasVolume ? nz(volume, 0.0) : 1.0            // no volume feed -> time-weighted fallback
+float wt     = clampVolInput and hasVolume and volMed > 0 ? math.min(wRaw, volMed * clampMultInput) : wRaw
+
+// With lam = 1 these are plain cumulative sums (a true VWAP); with lam < 1 every
+// bar's weight decays by lam per bar. A decayed prefix sum still allows O(1)
+// evaluation of any anchor:  sum[a..t] = S(t) - lam^(t-a+1) * S(a-1)
+float lam = weightModeInput == "Half-life" ? math.exp(-math.log(2.0) / halfLifeInput) : 1.0
+
+var float cumW  = 0.0
+var float cumPW = 0.0
+var float cumP2 = 0.0
+cumW  := lam * cumW  + wt
+cumPW := lam * cumPW + px * wt
+cumP2 := lam * cumP2 + px * px * wt
+
+// One entry per bar, newest last. Functions that run only on some bars read
+// history from here instead of using [], which would give them a sparse and
+// inconsistent history.
+int CAP = maxLegBarsInput + 2
+var array<float> bufW  = array.new<float>()
+var array<float> bufPW = array.new<float>()
+var array<float> bufP2 = array.new<float>()
+var array<float> bufC  = array.new<float>()
+var array<float> bufH  = array.new<float>()
+var array<float> bufL  = array.new<float>()
+var array<float> bufA  = array.new<float>()
+var int bufBar = -1
+
+record(array<float> buf, float v) =>
+    if bufBar == bar_index and buf.size() > 0    // realtime tick: overwrite the provisional entry
+        buf.set(buf.size() - 1, v)
+    else
+        buf.push(v)
+    if buf.size() > CAP
+        buf.shift()
+    buf.size()
+
+record(bufW, cumW)
+record(bufPW, cumPW)
+record(bufP2, cumP2)
+record(bufC, close)
+record(bufH, high)
+record(bufL, low)
+record(bufA, atr)
+bufBar := bar_index
+
+// Value `back` bars ago from a ring buffer; na when outside the buffer.
+hist(array<float> buf, int back) =>
+    float out = na
+    int idx = buf.size() - 1 - back
+    if idx >= 0 and idx < buf.size()
+        out := buf.get(idx)
+    out
+
+// VWAP and volume-weighted sigma at bar (bar_index - back)
+// for a leg anchored at (bar_index - aBack).
+legStats(int back, int aBack) =>
+    float f  = lam == 1.0 ? 1.0 : math.pow(lam, aBack - back + 1)
+    float v  = hist(bufW, back)  - f * nz(hist(bufW, aBack + 1))
+    float pw = hist(bufPW, back) - f * nz(hist(bufPW, aBack + 1))
+    float p2 = hist(bufP2, back) - f * nz(hist(bufP2, aBack + 1))
+    float m  = v > 0 ? pw / v : na
+    float sd = v > 0 ? math.sqrt(math.max(p2 / v - m * m, 0.0)) : 0.0
+    [m, sd]
+
+// Bar of the lowest low (or highest high) strictly after `fromBar`, up to now.
+extremeSince(int fromBar, bool wantLow) =>
+    int   span    = math.min(bar_index - nz(fromBar, bar_index - maxLegBarsInput), maxLegBarsInput)
+    int   bestOff = 0
+    float bestVal = wantLow ? low : high
+    if span > 1
+        for i = 1 to span - 1
+            float v = wantLow ? hist(bufL, i) : hist(bufH, i)
+            if (wantLow and v < bestVal) or (not wantLow and v > bestVal)
+                bestVal := v
+                bestOff := i
+    bar_index - bestOff
+
+// ── Leg methods ───────────────────────────────────────────
+method erase(Leg this) =>
+    this.curve.delete()
+    this.band1.delete()
+    this.band2.delete()
+
+method reset(Leg this) =>
+    this.trail.clear()
+    this.hi1.clear()
+    this.lo1.clear()
+    this.hi2.clear()
+    this.lo2.clear()
+    this.volUp    := 0.0
+    this.volDn    := 0.0
+    this.away     := 0
+    this.retests  := 0
+    this.volUpC   := 0.0
+    this.volDnC   := 0.0
+    this.awayC    := 0
+    this.retestsC := 0
+
+method putPoint(Leg this, int back, float m, float sd, bool commit) =>
+    int x = bar_index - back
+    // Realtime ticks re-enter the same bar: drop the provisional point first.
+    if this.trail.size() > 0 and this.trail.last().index == x
+        this.trail.pop()
+        if this.hi1.size() > 0 and this.hi1.last().index == x
+            this.hi1.pop()
+            this.lo1.pop()
+        if this.hi2.size() > 0 and this.hi2.last().index == x
+            this.hi2.pop()
+            this.lo2.pop()
+    this.trail.push(chart.point.from_index(x, m))
+    if showB1Input
+        this.hi1.push(chart.point.from_index(x, m + sd * mult1Input))
+        this.lo1.push(chart.point.from_index(x, m - sd * mult1Input))
+    if showB2Input
+        this.hi2.push(chart.point.from_index(x, m + sd * mult2Input))
+        this.lo2.push(chart.point.from_index(x, m - sd * mult2Input))
+    // Statistics always restart from the committed state, so a provisional bar
+    // is never counted twice.
+    float wBar  = hist(bufW, back) - lam * nz(hist(bufW, back + 1))
+    float cB    = hist(bufC, back)
+    float hB    = hist(bufH, back)
+    float lB    = hist(bufL, back)
+    bool  above = cB >= m
+    this.volUp := this.volUpC + (above ? wBar : 0.0)
+    this.volDn := this.volDnC + (above ? 0.0 : wBar)
+    float tol     = sd > 0 ? sd * retestTolInput : nz(hist(bufA, back), 0.0) * 0.1
+    bool  touch   = lB <= m + tol and hB >= m - tol
+    bool  outside = this.dir > 0 ? lB > m + tol : hB < m - tol
+    bool  hit     = touch and this.awayC >= retestMinAwayInput
+    this.away    := touch ? 0 : outside ? this.awayC + 1 : 0
+    this.retests := this.retestsC + (hit ? 1 : 0)
+    this.hitNow  := hit
+    this.vwap    := m
+    this.sigma   := sd
+    if commit
+        this.volUpC   := this.volUp
+        this.volDnC   := this.volDn
+        this.awayC    := this.away
+        this.retestsC := this.retests
+
+// Full pass from the anchor to the current bar — runs once per re-anchor.
+method rebuild(Leg this) =>
+    this.reset()
+    int aBack = math.min(bar_index - this.anchor, maxLegBarsInput)
+    this.anchor   := bar_index - aBack
+    this.anchorPx := this.dir > 0 ? hist(bufL, aBack) : hist(bufH, aBack)
+    for i = aBack to 0
+        [m, s] = legStats(i, aBack)
+        if not na(m)
+            this.putPoint(i, m, s, i > 0 or settled)
+
+// One bar forward. Legs beyond the limit roll their anchor to stay bounded.
+method advance(Leg this) =>
+    if bar_index - this.anchor > maxLegBarsInput
+        this.anchor := bar_index - maxLegBarsInput
+        while this.trail.size() > 0 and this.trail.first().index < this.anchor
+            this.trail.shift()
+        while this.hi1.size() > 0 and this.hi1.first().index < this.anchor
+            this.hi1.shift()
+            this.lo1.shift()
+        while this.hi2.size() > 0 and this.hi2.first().index < this.anchor
+            this.hi2.shift()
+            this.lo2.shift()
+    [m, s] = legStats(0, bar_index - this.anchor)
+    if not na(m)
+        this.putPoint(0, m, s, settled)
+
+// Cut the leg at the bar where the next one starts, so segments hand over
+// cleanly and the curve never breaks.
+method trimTo(Leg this, int lastBar) =>
+    while this.trail.size() > 0 and this.trail.last().index > lastBar
+        this.trail.pop()
+    while this.hi1.size() > 0 and this.hi1.last().index > lastBar
+        this.hi1.pop()
+        this.lo1.pop()
+    while this.hi2.size() > 0 and this.hi2.last().index > lastBar
+        this.hi2.pop()
+        this.lo2.pop()
+    this.vwap := this.trail.size() > 0 ? this.trail.last().price : na
+
+method draw(Leg this) =>
+    this.erase()
+    color base = this.dir > 0 ? BULL_COLOR : BEAR_COLOR
+    if showB2Input and this.hi2.size() >= 2
+        this.band2 := polyline.new(contour(this.hi2, this.lo2), false, true, xloc.bar_index,
+             line_color = color.new(base, 85), fill_color = color.new(base, fillTInput),
+             line_style = line.style_dotted, line_width = 1)
+    if showB1Input and this.hi1.size() >= 2
+        this.band1 := polyline.new(contour(this.hi1, this.lo1), false, true, xloc.bar_index,
+             line_color = color.new(base, 70), fill_color = color.new(base, fillTInput),
+             line_style = line.style_dotted, line_width = 1)
+    if this.trail.size() >= 2
+        this.curve := polyline.new(this.trail, false, false, xloc.bar_index,
+             line_color = base, line_width = lineWInput)
+
+// ── Memory levels ─────────────────────────────────────────
+var array<Memo> memos = array.new<Memo>()
+
+memoCrossed(Memo mm, int atBar) =>
+    mm.alive := false
+    mm.ln.set_x2(atBar)
+    if memoKeepInput
+        mm.ln.set_style(line.style_dotted)
+        mm.ln.set_color(color.new(mm.col, 75))
+    else
+        mm.ln.delete()
+
+addMemo(float y, int fromBar, color col) =>
+    if not na(y)
+        Memo mm = Memo.new(line.new(fromBar, y, bar_index, y, xloc.bar_index, extend.none,
+             color.new(col, 35), line.style_dashed, 1), y, col)
+        // Price may already have traded through it between the anchor and now.
+        int span = bar_index - fromBar
+        if span > 1
+            for i = span - 1 to 1
+                if hist(bufL, i) <= y and hist(bufH, i) >= y
+                    memoCrossed(mm, bar_index - i)
+                    break
+        if mm.alive or memoKeepInput
+            memos.push(mm)
+            while memos.size() > memoMaxInput
+                Memo old = memos.shift()
+                old.ln.delete()
+
+updateMemos() =>
+    if memos.size() > 0
+        for i = memos.size() - 1 to 0
+            Memo mm = memos.get(i)
+            if mm.alive
+                mm.ln.set_x2(bar_index)
+                if low <= mm.y and high >= mm.y
+                    memoCrossed(mm, bar_index)
+                    if not memoKeepInput
+                        memos.remove(i)
+
+// ── Anchor selection & leg management ─────────────────────
+var int legDir    = 0
+var int anchorBar = na
+int  nextDir      = 0
+int  nextAnchor   = na
+
+if anchorModeInput == "Swing"
+    if hiEvent or loEvent
+        nextDir    := swType == 1 ? -1 : 1
+        nextAnchor := swType == 1 ? swHiBar : swLoBar
+else if anchorModeInput == "Fast"
+    if fastUp
+        nextDir    := 1
+        nextAnchor := extLoBar
+    else if fastDn
+        nextDir    := -1
+        nextAnchor := extHiBar
+else if anchorModeInput == "Manual"
+    if settled and time >= manualTimeInput and nz(time[1], 0) < manualTimeInput
+        nextDir    := 1
+        nextAnchor := bar_index
+else if settled
+    bool brkUp = legDir != 1  and not na(swHi) and close > swHi
+    bool brkDn = legDir != -1 and not na(swLo) and close < swLo
+    if brkUp
+        nextDir    := 1
+        nextAnchor := extremeSince(swHiBar, true)
+    else if brkDn
+        nextDir    := -1
+        nextAnchor := extremeSince(swLoBar, false)
+
+var array<Leg> archive = array.new<Leg>()
+var Leg live = na
+bool reanchored = false
+
+if not na(nextAnchor)
+    reanchored := true
+    if not na(live)
+        // The previous leg always stays on the chart up to the new anchor, so the
+        // curve never breaks. This also covers a superseded pivot (a higher high
+        // after a high, or a lower low after a low): that stretch keeps its VWAP.
+        live.trimTo(nextAnchor)
+        live.draw()
+        if showMemoInput and nextDir != live.dir           // memory level only on a real flip
+            addMemo(live.vwap, nextAnchor, live.dir > 0 ? BULL_COLOR : BEAR_COLOR)
+        archive.push(live)
+        while archive.size() > maxLegsInput
+            Leg old = archive.shift()
+            old.erase()
+    live := newLeg(nextDir, nextAnchor)
+    live.rebuild()
+    legDir    := nextDir
+    anchorBar := live.anchor
+else if not na(live)
+    live.advance()
+
+updateMemos()
+
+if not na(live) and barstate.islast
+    live.draw()
+
+// ── Leg readouts ──────────────────────────────────────────
+float vwapNow     = na
+float sigNow      = na
+float legBalance  = na                           // share of leg weight traded above VWAP, 0..100
+float legAnchorPx = na
+float legMove     = na
+int   legBars     = 0
+int   legRetests  = 0
+bool  retestBull  = false
+bool  retestBear  = false
+
+if not na(live)
+    vwapNow     := live.vwap
+    sigNow      := live.sigma
+    legBars     := bar_index - live.anchor
+    legRetests  := live.retests
+    legAnchorPx := live.anchorPx
+    legMove     := safeDiv(close - nz(live.anchorPx, close), nz(live.anchorPx, close), 0.0) * 100.0
+    legBalance  := safeDiv(live.volUp, live.volUp + live.volDn, na) * 100.0
+    retestBull  := live.dir > 0 and live.hitNow
+    retestBear  := live.dir < 0 and live.hitNow
+
+float up1 = vwapNow + sigNow * mult1Input
+float dn1 = vwapNow - sigNow * mult1Input
+float up2 = vwapNow + sigNow * mult2Input
+float dn2 = vwapNow - sigNow * mult2Input
+
+float distSig = safeDiv(close - nz(vwapNow, close), nz(sigNow, 0.0), na)
+float distPct = safeDiv(close - nz(vwapNow, close), nz(vwapNow, close), 0.0) * 100.0
+
+string zoneStr = na(distSig) ? "—" : distSig > mult2Input ? "Premium" : distSig < -mult2Input ? "Discount" : "Fair value"
+color  zoneCol = zoneStr == "Premium" ? NEUTRAL_TEXT : zoneStr == "Discount" ? DISCOUNT_TEXT : TEXT_COLOR
+
+// ══════════════════════════════════════════════════════════
+// 8. ENTRY SIGNALS
+// ══════════════════════════════════════════════════════════
+// A retest of the anchored VWAP, in the direction of the current leg.
+bool confirmedBuy  = retestBull and settled and isWarmedUp
+bool confirmedSell = retestBear and settled and isWarmedUp
+
+bool evAnchorBull = reanchored and legDir > 0 and settled and isWarmedUp
+bool evAnchorBear = reanchored and legDir < 0 and settled and isWarmedUp
+
+bool hasPrevVwap = not na(vwapNow) and not na(vwapNow[1])
+bool evCrossUp   = hasPrevVwap and not reanchored and close > vwapNow and close[1] <= vwapNow[1] and settled and isWarmedUp
+bool evCrossDn   = hasPrevVwap and not reanchored and close < vwapNow and close[1] >= vwapNow[1] and settled and isWarmedUp
+
+var string lastEventStr = "—"
+if evAnchorBull
+    lastEventStr := "New leg ▲"
+if evAnchorBear
+    lastEventStr := "New leg ▼"
+if confirmedBuy
+    lastEventStr := "Retest ▲"
+if confirmedSell
+    lastEventStr := "Retest ▼"
+
+// ── Signal strength (0-100, heuristic composite) ──────────
+// 40 pts — leg weight balance agreeing with the leg direction
+// 25 pts — price on the leg's side of the VWAP
+// 20 pts — price not stretched beyond band 2
+// 15 pts — the leg has already produced at least one retest
+float balAlign = na(legBalance) ? 50.0 : (legDir > 0 ? legBalance : 100.0 - legBalance)
+float scoreRaw = 0.0
+scoreRaw += balAlign * 0.4
+scoreRaw += (legDir != 0 and not na(distSig) and distSig * legDir > 0) ? 25.0 : 0.0
+scoreRaw += (not na(distSig) and math.abs(distSig) <= mult2Input) ? 20.0 : 0.0
+scoreRaw += legRetests > 0 ? 15.0 : 0.0
+float strengthVal = legDir == 0 ? na : math.min(scoreRaw, 100.0)
+
+// ══════════════════════════════════════════════════════════
+// 9. RISK MANAGEMENT — single position, SL/TP/BE, win-rate
+// ══════════════════════════════════════════════════════════
+[effSLMult, effTP1, effTP2, effTP3] = switch riskPresetInput
+    "Conservative" => [2.5, 1.0, 2.0, 4.0]
+    "Aggressive"   => [1.0, 1.5, 2.5, 4.0]
+    "Scalping"     => [0.8, 0.8, 1.5, 2.0]
+    "Custom"       => [slMultInput, tp1MultInput, tp2MultInput, tp3MultInput]
+    =>                [1.5, 1.0, 2.0, 3.0]   // Balanced
+
+float riskAtr    = nz(ta.atr(atrLenRiskInput), 0.0)
+float slDistance = riskAtr * effSLMult
+
+var float activeEntry = na
+var float activeSL    = na
+var float activeTP1   = na
+var float activeTP2   = na
+var float activeTP3   = na
+var int   activeDir   = 0
+var int   entryBar    = na
+
+var bool tp1Reached = false
+var bool tp2Reached = false
+var bool tp3Reached = false
+var bool beActive   = false
+
+// Session win-rate counters + recent-form strip (reset on reload / input change)
+var int    statWins   = 0
+var int    statLosses = 0
+var string formStr    = ""
+
+bool canOpen   = activeDir == 0
+bool openLong  = confirmedBuy  and slDistance > 0 and canOpen
+bool openShort = confirmedSell and slDistance > 0 and canOpen
+
+if openLong
+    activeEntry := close
+    activeSL    := close - slDistance
+    activeTP1   := close + slDistance * effTP1
+    activeTP2   := close + slDistance * effTP2
+    activeTP3   := close + slDistance * effTP3
+    activeDir   := 1
+    entryBar    := bar_index
+    tp1Reached  := false
+    tp2Reached  := false
+    tp3Reached  := false
+    beActive    := false
+
+if openShort
+    activeEntry := close
+    activeSL    := close + slDistance
+    activeTP1   := close - slDistance * effTP1
+    activeTP2   := close - slDistance * effTP2
+    activeTP3   := close - slDistance * effTP3
+    activeDir   := -1
+    entryBar    := bar_index
+    tp1Reached  := false
+    tp2Reached  := false
+    tp3Reached  := false
+    beActive    := false
+
+bool  beActiveAtBarStart = beActive
+float effectiveSL        = activeSL
+
+bool canCheckHit = activeDir != 0 and not na(entryBar) and bar_index > entryBar and barstate.isconfirmed
+
+bool slHit  = canCheckHit and (activeDir == 1 ? low  <= effectiveSL : high >= effectiveSL)
+bool tp1Hit = canCheckHit and (activeDir == 1 ? high >= activeTP1   : low  <= activeTP1)
+bool tp2Hit = canCheckHit and (activeDir == 1 ? high >= activeTP2   : low  <= activeTP2)
+bool tp3Hit = canCheckHit and (activeDir == 1 ? high >= activeTP3   : low  <= activeTP3)
+
+bool tp1FirstTouch = tp1Hit and not tp1Reached and not slHit
+bool tp2FirstTouch = tp2Hit and not tp2Reached and not slHit
+bool tp3FirstTouch = tp3Hit and not tp3Reached and not slHit
+
+if tp1FirstTouch
+    tp1Reached := true
+if tp2FirstTouch
+    tp2Reached := true
+if tp3FirstTouch
+    tp3Reached := true
+
+bool beJustActivated = false
+if useBreakEvenInput and tp1FirstTouch and not beActive
+    activeSL        := activeEntry
+    beActive        := true
+    beJustActivated := true
+
+var float hitSL    = na
+var float hitEntry = na
+if slHit
+    hitSL    := effectiveSL
+    hitEntry := activeEntry
+
+float exitEntry = activeEntry
+float exitSL    = effectiveSL
+float exitTP1   = activeTP1
+float exitTP2   = activeTP2
+float exitTP3   = activeTP3
+bool  exitBeActive      = beActiveAtBarStart
+bool  displayTp1Reached = tp1Reached
+bool  displayTp2Reached = tp2Reached
+bool  displayTp3Reached = tp3Reached
+
+// Closure: SL, BE-stop (= SL once moved to entry) or TP3
+if (slHit or tp3Hit) and activeDir != 0
+    bool tradeWin = tp1Reached
+    if tradeWin
+        statWins  += 1
+    else
+        statLosses += 1
+    // Recent-form strip: ▰ = win (TP1 touched), ▱ = loss
+    formStr := formStr + (tradeWin ? "▰" : "▱")
+    if str.length(formStr) > FORM_LEN
+        formStr := str.substring(formStr, str.length(formStr) - FORM_LEN)
+    activeDir   := 0
+    activeSL    := na
+    activeTP1   := na
+    activeTP2   := na
+    activeTP3   := na
+    activeEntry := na
+    entryBar    := na
+    tp1Reached  := false
+    tp2Reached  := false
+    tp3Reached  := false
+    beActive    := false
+
+// ══════════════════════════════════════════════════════════
+// 10. PLOTS (entry markers + data-window series)
+// ══════════════════════════════════════════════════════════
+plotshape(showSignalsInput and openLong ? low : na, "Buy",
+     style = shape.labelup, location = location.belowbar,
+     color = BULL_COLOR, textcolor = BULL_LABEL_TEXT, text = "Long ▲", size = size.small)
+
+plotshape(showSignalsInput and openShort ? high : na, "Sell",
+     style = shape.labeldown, location = location.abovebar,
+     color = BEAR_COLOR, textcolor = BEAR_LABEL_TEXT, text = "Short ▼", size = size.small)
+
+plot(vwapNow,     "VWAP",     display = display.data_window)
+plot(up1,         "+1 band",  display = display.data_window)
+plot(dn1,         "-1 band",  display = display.data_window)
+plot(up2,         "+2 band",  display = display.data_window)
+plot(dn2,         "-2 band",  display = display.data_window)
+plot(strengthVal, "Strength", display = display.data_window)
+
+bgcolor(showBgInput and legDir != 0 ? color.new(legDir > 0 ? BULL_COLOR : BEAR_COLOR, 92) : na, title = "Leg Background")
+
+// ══════════════════════════════════════════════════════════
+// 11. SL/TP LINES & LABELS (persist until next entry)
+// ══════════════════════════════════════════════════════════
+var line slLine = na
+var line tp1Line = na
+var line tp2Line = na
+var line tp3Line = na
+var line entryLine = na
+
+var label slLabel = na
+var label tp1Label = na
+var label tp2Label = na
+var label tp3Label = na
+var label entryLabel = na
+
+if (openLong or openShort) and showSlTpInput
+    line.delete(slLine),  line.delete(tp1Line)
+    line.delete(tp2Line), line.delete(tp3Line)
+    line.delete(entryLine)
+    label.delete(slLabel),  label.delete(tp1Label)
+    label.delete(tp2Label), label.delete(tp3Label)
+    label.delete(entryLabel)
+
+    int x1 = bar_index
+    int x2 = bar_index + LINE_FORWARD_BARS
+
+    entryLine := line.new(x1, activeEntry, x2, activeEntry, color = ENTRY_COLOR, style = entryLineStyle, width = 1)
+    slLine    := line.new(x1, activeSL,    x2, activeSL,    color = SL_COLOR,    style = slLineStyle,    width = 2)
+    tp1Line   := line.new(x1, activeTP1,   x2, activeTP1,   color = TP1_COLOR,   style = tpLineStyle,    width = 1)
+    tp2Line   := line.new(x1, activeTP2,   x2, activeTP2,   color = TP2_COLOR,   style = tpLineStyle,    width = 1)
+    tp3Line   := line.new(x1, activeTP3,   x2, activeTP3,   color = TP3_COLOR,   style = tpLineStyle,    width = 1)
+
+    if showSlTpLabelsInput
+        int lblX = x2 + LABEL_OFFSET_BARS
+        string entryS = str.tostring(activeEntry, format.mintick)
+        string slS    = fmtPrice(activeSL)  + formatPctFromEntry(activeSL,  activeEntry)
+        string tp1S   = fmtPrice(activeTP1) + formatPctFromEntry(activeTP1, activeEntry)
+        string tp2S   = fmtPrice(activeTP2) + formatPctFromEntry(activeTP2, activeEntry)
+        string tp3S   = fmtPrice(activeTP3) + formatPctFromEntry(activeTP3, activeEntry)
+
+        entryLabel := label.new(lblX, activeEntry, "ENTRY " + entryS,
+             color = ENTRY_COLOR, textcolor = LABEL_TEXT, style = label.style_label_left, size = labelSize)
+        slLabel    := label.new(lblX, activeSL,  "SL "  + slS,
+             color = SL_COLOR, textcolor = LABEL_TEXT, style = label.style_label_left, size = labelSize)
+        tp1Label   := label.new(lblX, activeTP1, "TP1 " + tp1S,
+             color = TP_LABEL_COLOR, textcolor = LABEL_TEXT, style = label.style_label_left, size = labelSize)
+        tp2Label   := label.new(lblX, activeTP2, "TP2 " + tp2S,
+             color = TP_LABEL_COLOR, textcolor = LABEL_TEXT, style = label.style_label_left, size = labelSize)
+        tp3Label   := label.new(lblX, activeTP3, "TP3 " + tp3S,
+             color = TP_LABEL_COLOR, textcolor = LABEL_TEXT, style = label.style_label_left, size = labelSize)
+
+if showSlTpInput and not na(tp1Line) and displayTp1Reached
+    line.set_color(tp1Line, TP_HIT_COLOR)
+    line.set_style(tp1Line, line.style_solid)
+    if showSlTpLabelsInput and not na(tp1Label)
+        label.set_text(tp1Label, "TP1 ✓ " + fmtPrice(exitTP1) + formatPctFromEntry(exitTP1, exitEntry))
+        label.set_color(tp1Label, TP_HIT_COLOR)
+if showSlTpInput and not na(tp2Line) and displayTp2Reached
+    line.set_color(tp2Line, TP_HIT_COLOR)
+    line.set_style(tp2Line, line.style_solid)
+    if showSlTpLabelsInput and not na(tp2Label)
+        label.set_text(tp2Label, "TP2 ✓ " + fmtPrice(exitTP2) + formatPctFromEntry(exitTP2, exitEntry))
+        label.set_color(tp2Label, TP_HIT_COLOR)
+if showSlTpInput and not na(tp3Line) and displayTp3Reached
+    line.set_color(tp3Line, TP_HIT_COLOR)
+    line.set_style(tp3Line, line.style_solid)
+    if showSlTpLabelsInput and not na(tp3Label)
+        label.set_text(tp3Label, "TP3 ✓ " + fmtPrice(exitTP3) + formatPctFromEntry(exitTP3, exitEntry))
+        label.set_color(tp3Label, TP_HIT_COLOR)
+
+if showSlTpInput and beActive and activeDir != 0
+    if not na(slLine)
+        line.set_color(slLine, color.new(SL_COLOR, BE_DIM_TRANSP))
+    if showSlTpLabelsInput
+        if not na(slLabel)
+            label.set_color(slLabel, color.new(SL_COLOR, BE_DIM_TRANSP))
+        if not na(entryLabel)
+            string entryS = str.tostring(activeEntry, format.mintick)
+            label.set_text(entryLabel, "ENTRY " + entryS + "  → SL (BE)")
+            label.set_color(entryLabel, BE_COLOR)
+
+if activeDir != 0 and showSlTpInput and not na(slLine)
+    int newX2   = bar_index + LINE_UPDATE_BARS
+    int newLblX = newX2 + LABEL_OFFSET_BARS
+    line.set_x2(slLine,    newX2)
+    line.set_x2(tp1Line,   newX2)
+    line.set_x2(tp2Line,   newX2)
+    line.set_x2(tp3Line,   newX2)
+    line.set_x2(entryLine, newX2)
+    if showSlTpLabelsInput and not na(slLabel)
+        label.set_x(slLabel,    newLblX)
+        label.set_x(tp1Label,   newLblX)
+        label.set_x(tp2Label,   newLblX)
+        label.set_x(tp3Label,   newLblX)
+        label.set_x(entryLabel, newLblX)
+
+// ══════════════════════════════════════════════════════════
+// 12. DASHBOARD (sectioned, dynamic height, gauges, tooltips)
+// ══════════════════════════════════════════════════════════
+var table dashTable = na
+
+if showDashInput and barstate.islast
+    // ── Values ──
+    string trendWord = legDir == 1 ? "Bullish" : legDir == -1 ? "Bearish" : "Neutral"
+    color  trendCol  = legDir == 1 ? BULL_TEXT : legDir == -1 ? BEAR_TEXT : NEUTRAL_TEXT
+    color  headerBg  = legDir == 1 ? HEADER_BG_BULL : legDir == -1 ? HEADER_BG_BEAR : HEADER_BG_FLAT
+
+    string signalStr = activeDir == 1 ? "LONG" : activeDir == -1 ? "SHORT" : "Wait"
+    color  signalCol = activeDir == 1 ? BULL_TEXT : activeDir == -1 ? BEAR_TEXT : TEXT_MUTED
+
+    string strengthStr = na(strengthVal) ? "—" : str.tostring(strengthVal, "#") + "  " + buildGauge(strengthVal, 100, 8)
+    color  strengthCol = na(strengthVal) ? TEXT_MUTED : strengthVal >= 70 ? BULL_TEXT : strengthVal >= 40 ? NEUTRAL_TEXT : BEAR_TEXT
+
+    string dashAnchor  = legDir == 0 or na(legAnchorPx) ? "—" : lastStruct + " @ " + str.tostring(legAnchorPx, format.mintick)
+    string dashLegBars = legDir == 0 ? "—" : str.tostring(legBars) + " bars · " + fmtSigned(legMove, "%")
+    string dashMode    = anchorModeInput + " / " + (weightModeInput == "Half-life" ? "half-life " + str.tostring(halfLifeInput) : "cumulative")
+    string dashVwap    = fmtPrice(vwapNow)
+    string dashDist    = na(distSig) ? "—" : fmtSigned(distSig, "σ") + "   " + fmtSigned(distPct, "%")
+    string dashBalance = na(legBalance) ? "—" : str.tostring(legBalance, "#") + "%  " + buildGauge(nz(legBalance), 100, 6)
+    string dashBalLbl  = hasVolume ? "Vol above VWAP" : "Bars above VWAP"
+    color  balanceCol  = na(legBalance) ? TEXT_COLOR : legBalance >= 50 ? BULL_TEXT : BEAR_TEXT
+
+    float currentRR = activeDir != 0 ? effTP1 : 0.0
+    float slDistPct = activeDir != 0 and not na(activeEntry) and activeEntry != 0 ? math.abs(activeEntry - activeSL) / activeEntry * 100 : 0.0
+
+    string dashSL  = activeDir != 0 and not na(activeSL)  ? (beActive ? "BE @ " : "") + str.tostring(activeSL, format.mintick) : "—"
+    string dashTP1 = activeDir != 0 and not na(activeTP1) ? (tp1Reached ? "✓ " : "") + str.tostring(activeTP1, format.mintick) : "—"
+    string dashTP2 = activeDir != 0 and not na(activeTP2) ? (tp2Reached ? "✓ " : "") + str.tostring(activeTP2, format.mintick) : "—"
+    string dashTP3 = activeDir != 0 and not na(activeTP3) ? (tp3Reached ? "✓ " : "") + str.tostring(activeTP3, format.mintick) : "—"
+    color  dashSlCol  = beActive   ? BE_COLOR     : SL_COLOR
+    color  dashTp1Col = tp1Reached ? TP_HIT_COLOR : TP_LABEL_COLOR
+    color  dashTp2Col = tp2Reached ? TP_HIT_COLOR : TP_LABEL_COLOR
+    color  dashTp3Col = tp3Reached ? TP_HIT_COLOR : TP_LABEL_COLOR
+
+    string dashRR   = str.tostring(currentRR, "#.#") + "R"
+    string dashDistPct = str.tostring(slDistPct, "#.##") + "%"
+    color  rrColor   = currentRR >= 1.5 ? BULL_TEXT : currentRR >= 1.0 ? NEUTRAL_TEXT : BEAR_TEXT
+    color  distColor = slDistPct > 3.0 ? BEAR_TEXT : slDistPct > 1.0 ? NEUTRAL_TEXT : BULL_TEXT
+
+    int    closedTrades = statWins + statLosses
+    float  winRate      = closedTrades > 0 ? statWins / float(closedTrades) * 100.0 : 0.0
+    string dashWL       = str.tostring(statWins) + " / " + str.tostring(statLosses)
+    string dashWR       = closedTrades > 0 ? str.tostring(winRate, "#.#") + "%  " + buildGauge(winRate, 100, 8) : "—"
+    color  wrCol        = closedTrades == 0 ? TEXT_MUTED : winRate >= 55.0 ? BULL_TEXT : winRate >= 45.0 ? NEUTRAL_TEXT : BEAR_TEXT
+    string dashForm     = formStr == "" ? "—" : formStr
+
+    // ── Row count (dynamic) ──
+    int marketRows = showMarketSecInput ? 6 : 0
+    int vwapRows   = showVwapSecInput   ? 8 : 0
+    int tradeRows  = showTradeSecInput  ? (activeDir != 0 ? 7 : 2) : 0
+    int statsRows  = showStatsSecInput  ? 5 : 0
+    int totalRows  = 2 + marketRows + vwapRows + tradeRows + statsRows
+
+    // ── Rebuild table to fit current state (one table at a time) ──
+    if not na(dashTable)
+        table.delete(dashTable)
+    dashTable := table.new(dashPos, 2, totalRows, bgcolor = TABLE_BG, border_color = TABLE_BORDER, border_width = 1, frame_color = TABLE_BORDER, frame_width = 1)
+
+    int   r  = 0
+    bool  zeb = false
+    color rb = TABLE_BG
+
+    // Header (trend-tinted)
+    table.cell(dashTable, 0, r, "◆ SA-VWAP · " + trendWord, text_color = HEADER_TEXT, bgcolor = headerBg, text_size = size.small, text_halign = text.align_center)
+    table.merge_cells(dashTable, 0, r, 1, r)
+    r += 1
+
+    // ── Market ──
+    if showMarketSecInput
+        table.cell(dashTable, 0, r, "— Market —", text_color = TEXT_MUTED, bgcolor = TABLE_ROW_ALT, text_size = size.tiny, text_halign = text.align_center)
+        table.merge_cells(dashTable, 0, r, 1, r)
+        r += 1
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Trend", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Direction of the current anchored leg.")
+        table.cell(dashTable, 1, r, trendWord, text_color = trendCol, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Signal", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Current position. A new trade opens only while flat.")
+        table.cell(dashTable, 1, r, signalStr, text_color = signalCol, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Strength", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Composite 0-100: volume balance (40) + price on the leg's side (25) + not stretched past band 2 (20) + leg already retested (15). A context score, not a backtested edge.")
+        table.cell(dashTable, 1, r, strengthStr, text_color = strengthCol, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Last event", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Most recent leg anchor or VWAP retest.")
+        table.cell(dashTable, 1, r, lastEventStr, text_color = TEXT_COLOR, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Timeframe", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb)
+        table.cell(dashTable, 1, r, timeframe.period, text_color = TEXT_COLOR, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+
+    // ── VWAP ──
+    if showVwapSecInput
+        table.cell(dashTable, 0, r, "— VWAP —", text_color = TEXT_MUTED, bgcolor = TABLE_ROW_ALT, text_size = size.tiny, text_halign = text.align_center)
+        table.merge_cells(dashTable, 0, r, 1, r)
+        r += 1
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Mode", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Anchor mode / weighting. Without volume data the VWAP falls back to time weighting.")
+        table.cell(dashTable, 1, r, dashMode, text_color = TEXT_COLOR, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Anchor", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Structure tag and price of the bar the current leg is anchored to.")
+        table.cell(dashTable, 1, r, dashAnchor, text_color = TEXT_COLOR, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Leg age", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Bars since the anchor and price move from it.")
+        table.cell(dashTable, 1, r, dashLegBars, text_color = TEXT_COLOR, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "VWAP", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Anchored VWAP value on the current bar.")
+        table.cell(dashTable, 1, r, dashVwap, text_color = trendCol, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Price vs VWAP", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Distance from the VWAP in leg sigma and in percent.")
+        table.cell(dashTable, 1, r, dashDist, text_color = TEXT_COLOR, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Zone", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Premium above +band 2, Discount below -band 2, Fair value in between.")
+        table.cell(dashTable, 1, r, zoneStr, text_color = zoneCol, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, dashBalLbl, text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Share of the leg's traded weight that changed hands above the VWAP. Above 50% = buyers control the leg.")
+        table.cell(dashTable, 1, r, dashBalance, text_color = balanceCol, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+
+    // ── Trade (collapses to one row when flat) ──
+    if showTradeSecInput
+        table.cell(dashTable, 0, r, "— Trade —", text_color = TEXT_MUTED, bgcolor = TABLE_ROW_ALT, text_size = size.tiny, text_halign = text.align_center)
+        table.merge_cells(dashTable, 0, r, 1, r)
+        r += 1
+        if activeDir != 0
+            rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+            table.cell(dashTable, 0, r, "SL", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Active stop. 'BE @' = moved to entry after TP1.")
+            table.cell(dashTable, 1, r, dashSL, text_color = dashSlCol, text_size = size.small, bgcolor = rb)
+            r += 1
+            zeb := not zeb
+            rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+            table.cell(dashTable, 0, r, "TP1", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "✓ = touched (counts as a win).")
+            table.cell(dashTable, 1, r, dashTP1, text_color = dashTp1Col, text_size = size.small, bgcolor = rb)
+            r += 1
+            zeb := not zeb
+            rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+            table.cell(dashTable, 0, r, "TP2", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb)
+            table.cell(dashTable, 1, r, dashTP2, text_color = dashTp2Col, text_size = size.small, bgcolor = rb)
+            r += 1
+            zeb := not zeb
+            rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+            table.cell(dashTable, 0, r, "TP3", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Final target. Touching it closes the trade.")
+            table.cell(dashTable, 1, r, dashTP3, text_color = dashTp3Col, text_size = size.small, bgcolor = rb)
+            r += 1
+            zeb := not zeb
+            rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+            table.cell(dashTable, 0, r, "R:R (TP1)", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Reward-to-risk at TP1.")
+            table.cell(dashTable, 1, r, dashRR, text_color = rrColor, text_size = size.small, bgcolor = rb)
+            r += 1
+            zeb := not zeb
+            rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+            table.cell(dashTable, 0, r, "SL Dist %", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Stop distance as % of entry (not position risk).")
+            table.cell(dashTable, 1, r, dashDistPct, text_color = distColor, text_size = size.small, bgcolor = rb)
+            r += 1
+            zeb := not zeb
+        else
+            rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+            table.cell(dashTable, 0, r, "Flat · waiting for a VWAP retest", text_color = TEXT_MUTED, text_size = size.small, text_halign = text.align_center, bgcolor = rb)
+            table.merge_cells(dashTable, 0, r, 1, r)
+            r += 1
+            zeb := not zeb
+
+    // ── Stats ──
+    if showStatsSecInput
+        table.cell(dashTable, 0, r, "— Stats —", text_color = TEXT_MUTED, bgcolor = TABLE_ROW_ALT, text_size = size.tiny, text_halign = text.align_center)
+        table.merge_cells(dashTable, 0, r, 1, r)
+        r += 1
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Trades", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Closed trades this session (wins + losses).")
+        table.cell(dashTable, 1, r, str.tostring(closedTrades), text_color = TEXT_COLOR, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "W / L", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb)
+        table.cell(dashTable, 1, r, dashWL, text_color = TEXT_COLOR, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Win rate", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Wins / closed. A trade is a WIN once TP1 is touched.")
+        table.cell(dashTable, 1, r, dashWR, text_color = wrCol, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+        rb := zeb ? TABLE_ROW_ALT : TABLE_BG
+        table.cell(dashTable, 0, r, "Form", text_color = TEXT_MUTED, text_size = size.small, bgcolor = rb, tooltip = "Last " + str.tostring(FORM_LEN) + " closed trades.  ▰ = win · ▱ = loss (newest on the right).")
+        table.cell(dashTable, 1, r, dashForm, text_color = FORM_COLOR, text_size = size.small, bgcolor = rb)
+        r += 1
+        zeb := not zeb
+
+    // Footer
+    table.cell(dashTable, 0, r, INDICATOR_NAME + " · " + INDICATOR_VERSION, text_color = TEXT_MUTED, text_size = size.tiny, text_halign = text.align_center)
+    table.merge_cells(dashTable, 0, r, 1, r)
+
+// ══════════════════════════════════════════════════════════
+// 13. WATERMARK
+// ══════════════════════════════════════════════════════════
+if barstate.islast and showWatermarkInput
+    var table wmTable = table.new(position.bottom_center, 1, 1, bgcolor = color.new(color.black, 100), border_color = color.new(color.black, 100), border_width = 0, frame_color = color.new(color.black, 100), frame_width = 0)
+    table.cell(wmTable, 0, 0, BRAND_NAME, text_color = WM_COLOR, text_size = size.normal, text_halign = text.align_center, bgcolor = color.new(color.black, 100))
+
+// ══════════════════════════════════════════════════════════
+// 14. ALERTS (strings built only when an alert fires)
+// ══════════════════════════════════════════════════════════
+if openLong or openShort
+    string aPrice = str.tostring(close, format.mintick)
+    string aSL    = str.tostring(nz(activeSL),  format.mintick)
+    string aTP1   = str.tostring(nz(activeTP1), format.mintick)
+    string aTP2   = str.tostring(nz(activeTP2), format.mintick)
+    string aTP3   = str.tostring(nz(activeTP3), format.mintick)
+    string aRR    = str.tostring(effTP1, "#.#")
+    string aVwap  = str.tostring(nz(vwapNow), format.mintick)
+
+    if openLong
+        string jsonBuy = '{"action":"buy","ticker":"' + syminfo.tickerid + '","tf":"' + timeframe.period + '","price":' + aPrice + ',"vwap":' + aVwap + ',"sl":' + aSL + ',"tp1":' + aTP1 + ',"tp2":' + aTP2 + ',"tp3":' + aTP3 + ',"rr":' + aRR + '}'
+        string textBuy = "🟢 LONG | VWAP retest | " + syminfo.tickerid + " | TF: " + timeframe.period + " | Price: " + aPrice + " | SL: " + aSL + " | TP1: " + aTP1 + " | TP2: " + aTP2 + " | TP3: " + aTP3 + " | R:R: " + aRR
+        alert(webhookInput ? jsonBuy : textBuy, alert.freq_once_per_bar_close)
+
+    if openShort
+        string jsonSell = '{"action":"sell","ticker":"' + syminfo.tickerid + '","tf":"' + timeframe.period + '","price":' + aPrice + ',"vwap":' + aVwap + ',"sl":' + aSL + ',"tp1":' + aTP1 + ',"tp2":' + aTP2 + ',"tp3":' + aTP3 + ',"rr":' + aRR + '}'
+        string textSell = "🔴 SHORT | VWAP retest | " + syminfo.tickerid + " | TF: " + timeframe.period + " | Price: " + aPrice + " | SL: " + aSL + " | TP1: " + aTP1 + " | TP2: " + aTP2 + " | TP3: " + aTP3 + " | R:R: " + aRR
+        alert(webhookInput ? jsonSell : textSell, alert.freq_once_per_bar_close)
+
+if slHit and showSlHitAlertInput
+    string textSlHit = (exitBeActive ? "🛡️ BE STOP-OUT | " : "🛑 SL HIT | ") + syminfo.tickerid + " | Entry: " + str.tostring(nz(hitEntry), format.mintick) + " | SL: " + str.tostring(nz(hitSL), format.mintick)
+    alert(textSlHit, alert.freq_once_per_bar_close)
+
+if beJustActivated and alertTpHitInput
+    alert("🛡️ BREAK-EVEN | " + syminfo.tickerid + " | SL moved to " + str.tostring(nz(exitEntry), format.mintick), alert.freq_once_per_bar_close)
+if tp1FirstTouch and alertTpHitInput
+    alert("🎯 TP1 HIT | " + syminfo.tickerid + " | Price: " + str.tostring(nz(exitTP1), format.mintick), alert.freq_once_per_bar_close)
+if tp2FirstTouch and alertTpHitInput
+    alert("🎯🎯 TP2 HIT | " + syminfo.tickerid + " | Price: " + str.tostring(nz(exitTP2), format.mintick), alert.freq_once_per_bar_close)
+if tp3FirstTouch and alertTpHitInput
+    alert("🏆 TP3 HIT | " + syminfo.tickerid + " | Price: " + str.tostring(nz(exitTP3), format.mintick), alert.freq_once_per_bar_close)
+
+if evAnchorBull and alertStructInput
+    alert("🟢 New bullish leg | " + syminfo.tickerid + " | TF: " + timeframe.period + " | Anchor: " + fmtPrice(legAnchorPx), alert.freq_once_per_bar_close)
+if evAnchorBear and alertStructInput
+    alert("🔴 New bearish leg | " + syminfo.tickerid + " | TF: " + timeframe.period + " | Anchor: " + fmtPrice(legAnchorPx), alert.freq_once_per_bar_close)
+if evCrossUp and alertStructInput
+    alert("🔵 Close above VWAP | " + syminfo.tickerid + " | TF: " + timeframe.period + " | VWAP: " + fmtPrice(vwapNow), alert.freq_once_per_bar_close)
+if evCrossDn and alertStructInput
+    alert("🔵 Close below VWAP | " + syminfo.tickerid + " | TF: " + timeframe.period + " | VWAP: " + fmtPrice(vwapNow), alert.freq_once_per_bar_close)

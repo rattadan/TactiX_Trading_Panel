@@ -1,0 +1,30 @@
+//@version=5
+// @title: MACD Crossover
+// @description: Classic momentum strategy entering on MACD and signal line bullish or bearish crossovers.
+strategy("MACD Crossover Strategy", "MACD", true)
+// Live indicators
+macdFast = input.int(12, "MACD Fast", minval=1, maxval=50)
+macdSlow = input.int(26, "MACD Slow", minval=1, maxval=100)
+macdSignal = input.int(9, "MACD Signal", minval=1, maxval=50)
+rsiPeriod = input.int(14, "RSI Period", minval=1, maxval=50)
+stochPeriod = input.int(14, "Stoch Period", minval=1, maxval=50)
+stochKSmooth = input.int(3, "Stoch %K", minval=1, maxval=10)
+stochDSmooth = input.int(3, "Stoch %D", minval=1, maxval=10)
+
+// --- MACD Calculation ---
+[macd_line, signal_line, hist] = ta.macd(close, macdFast, macdSlow, macdSignal)
+
+// --- Entry/Exit Conditions ---
+long_condition = ta.crossover(macd_line, signal_line)
+short_condition = ta.crossunder(macd_line, signal_line)
+
+// --- Plotting the MACD ---
+plot(macd_line, "MACD Line", color=color.new(color.blue, 0))
+plot(signal_line, "Signal Line", color=color.new(color.red, 0))
+
+// --- Strategy Execution ---
+if (long_condition)
+    strategy.entry("Long", strategy.long)
+
+if (short_condition)
+    strategy.entry("Short", strategy.short)

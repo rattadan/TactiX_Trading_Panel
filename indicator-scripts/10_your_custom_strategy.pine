@@ -1,0 +1,21 @@
+//@version=5
+// @title: Your custom strategy
+// @description: Empty starter scaffold for creating your own Pine strategy logic.
+strategy("Your custom strategy", "Custom", true)
+
+// --- Inputs ---
+rsiPeriod = input.int(14, "Length", minval=1)
+
+// --- Calculations ---
+// Add your indicator calculations here.
+
+// --- Conditions ---
+long_condition = false
+short_condition = false
+
+// --- Strategy Execution ---
+if (long_condition)
+    strategy.entry("Long", strategy.long)
+
+if (short_condition)
+    strategy.entry("Short", strategy.short)

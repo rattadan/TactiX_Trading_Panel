@@ -1,0 +1,106 @@
+//@version=5
+
+// @title: Rolling Point of Control [AlgoAlpha]
+// @description:  Point of Control based on volume or price profiles directly on your chart, providing a vivid depiction of dominant price levels according to historical data
+
+indicator("Rolling Point of Control [AlgoAlpha]", "AlgoAlpha - 🎛️Rolling POC",overlay = true, max_boxes_count = 500)
+
+// @scale: plook, hlen
+ptype = input.string("Volume Profile", "Profile Type", ["Volume Profile", "Price Profile"])
+plook = input.int(40, "Profile Lookback")
+res = input.int(15, "Profile Resolution")
+scale = input.int(30, "Profile Horizontal Scale")
+hlen = input.int(25, "Trend Period")
+s = input.bool(true, "Smooth POC")
+f = input.bool(true, "Show Fill")
+h = input.bool(true, "Show Profile")
+t = input.bool(false, "Show Trend")
+green = input.color(#00ffbb, "Up Color")
+red = input.color(#ff1100, "Down Color")
+yel = input.color(color.yellow, "Highlight Color")
+
+neut = chart.fg_color
+var poc = 0.0
+var left = 0
+top_boundaries = array.new_float(res)
+bottom_boundaries = array.new_float(res)
+binlen = array.new_float(res)
+var boxes = array.new_box()
+var lines = array.new_line()
+highs = array.new_float()
+lows = array.new_float()
+volumes = array.new_float()
+
+for i = 0 to bar_index - (bar_index - plook)
+    highs.push(high[i])
+    lows.push(low[i])
+    volumes.push(volume[i])
+
+
+maxx = array.max(highs)
+minn = array.min(lows)
+size = array.size(highs)
+
+while boxes.size() > 0
+    boxes.shift().delete()
+while lines.size() > 0
+    lines.shift().delete()
+
+if size > 0
+    step = (maxx - minn) / res
+    granularity = res
+    for i = 0 to granularity - 1
+        bin_size = 0.0
+        bottom = minn + (i*step)
+        top = minn + ( (i+1)*step )
+        bottom_boundaries.insert(i, bottom)
+        top_boundaries.insert(i, top)   
+        for j = 0 to array.size(highs) - 1
+            candle_above_hbar = lows.get(j) > top
+            candle_below_hbar = highs.get(j) < bottom
+            is_candle_in_bucket = not (candle_above_hbar or candle_below_hbar)
+            bin_size += is_candle_in_bucket ? (ptype == "Volume Profile" ? volumes.get(j) : 1) : 0
+        array.insert(binlen, i, bin_size)
+    boc = binlen.max()
+    boci = binlen.indexof(boc) > 0 ? binlen.indexof(boc) : 0
+    poc := math.avg(top_boundaries.get(boci), bottom_boundaries.get(boci))
+
+hpoc = ta.wma(poc, hlen)
+rh = ta.highest(plook)
+rl = ta.lowest(plook)
+
+for i = 0 to res - 1
+    box_right = bar_index + 7 + scale//binlen.max()
+    box_left = box_right - math.round(binlen.get(i))/math.round(binlen.max()) * scale
+    box_top = array.get(top_boundaries, i)
+    box_bottom = array.get(bottom_boundaries, i)
+    left := box_left
+    boxes.push(h ? box.new(box_left, box_top, box_right, box_bottom, border_style = line.style_solid, border_color = color.black, border_width = 1, bgcolor = binlen.max() == binlen.get(i) ? yel : neut) : na)
+
+lines.push(h ? line.new(bar_index, poc, left, poc, color = yel) : na)
+
+poc := s ? ta.sma(poc, math.round(math.sqrt(plook))) : poc // smoothens POC after line is drawn
+
+pocgreen = color.from_gradient(close-poc, 0, ta.highest(close-poc, plook/2), color.new(green, 0), color.new(chart.fg_color, 40))
+pocred = color.from_gradient(poc-close, 0, ta.highest(poc-close, plook/2), color.new(red, 0), color.new(chart.fg_color, 40))
+rangehighcol = color.from_gradient(rh-close, 0, ta.highest(rh-close, plook/2), color.new(neut, 0), color.new(chart.fg_color, 90))
+rangelowcol = color.from_gradient(close-rl, 0, ta.highest(close-rl, plook/2), color.new(neut, 0), color.new(chart.fg_color, 90))
+
+price = plot(close > poc ? low : high, display = display.none)
+pocline = plot(poc, color = close > poc ? pocgreen : pocred)
+hma = plot(hpoc, color = hpoc > hpoc[1] ? green : red, display = t ? display.all : display.none)
+hma1 = plot(hpoc[1], color = hpoc > hpoc[1] ? green : red, display = t ? display.all : display.none)
+plot(rh, color = rangehighcol)
+plot(rl, color = rangelowcol)
+
+fill(price, pocline, close > poc ? low : high, poc, close > poc ? color.new(green, 100) : color.new(red, 100), close > poc ? color.new(green, 60) : color.new(red, 60), display = f ? display.all : display.none)
+fill(hma, hma1, hpoc > hpoc[1] ? green : red, display = t ? display.all : display.none)
+
+//Alerts
+alertcondition(ta.cross(close, poc), "Price Crossing Point of Control")
+alertcondition(ta.crossover(close, poc), "Price Crossing Over Point of Control")
+alertcondition(ta.crossunder(close, poc), "Price Crossing Under Point of Control")
+
+alertcondition(ta.cross(hpoc, hpoc[1]), "Trend Change")
+alertcondition(ta.crossover(hpoc, hpoc[1]), "Bullish Trend Change")
+alertcondition(ta.crossunder(hpoc, hpoc[1]), "Bearish Trend Change")

@@ -1,0 +1,33 @@
+//@version=5
+// @title: Multi-Timeframe EMA Filter
+// @description: Aligns local and higher timeframe EMA trend direction to trigger long or short entries.
+strategy("MTF EMA Strategy", "MTF EMA", true)
+// Live indicators
+macdFast = input.int(12, "MACD Fast", minval=1)
+macdSlow = input.int(26, "MACD Slow", minval=1)
+macdSignal = input.int(9, "MACD Signal", minval=1)
+rsiPeriod = input.int(14, "RSI Period", minval=1)
+stochPeriod = input.int(14, "Stoch Period", minval=1)
+stochKSmooth = input.int(3, "Stoch %K", minval=1)
+stochDSmooth = input.int(3, "Stoch %D", minval=1)
+
+// --- Strategy Inputs ---
+mtfMultiplier = input.int(4, "MTF EMA multiplier (e.g. 4)", minval=1)
+
+// --- Multi-Timeframe EMA Calculation (proxy via longer EMA on same data) ---
+mtf_ema = ta.ema(close, macdSlow * mtfMultiplier)
+
+// --- Entry/Exit Conditions ---
+long_condition = close > ta.ema(close, macdSlow) and close > mtf_ema
+short_condition = close < ta.ema(close, macdSlow) and close < mtf_ema
+
+// --- Plotting the EMAs ---
+plot(ta.ema(close, macdSlow), "Current TF EMA", color=color.new(color.blue, 0), linewidth=1)
+plot(mtf_ema, "MTF EMA", color=color.new(color.green, 0), linewidth=2)
+
+// --- Strategy Execution ---
+if (long_condition)
+    strategy.entry("Long", strategy.long)
+
+if (short_condition)
+    strategy.entry("Short", strategy.short)

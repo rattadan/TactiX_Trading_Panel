@@ -1,0 +1,73 @@
+//@version=5
+// @title: Divergency Indicator
+// @description: Detects regular bullish/bearish RSI divergences via pivots, marks them on the chart, and trades them with an SMA-cross filter.
+strategy("Divergency Strategy", "DIV", true)
+// Live indicators
+// @scale: pivotLen, signalWindow
+rsiPeriod = input.int(14, "RSI Period", minval=1)
+stochPeriod = input.int(14, "Stoch Period", minval=1)
+stochKSmooth = input.int(3, "Stoch %K", minval=1)
+stochDSmooth = input.int(3, "Stoch %D", minval=1)
+
+// --- Strategy Inputs ---
+pivotLen = input.int(5, "Pivot Length", minval=1)
+signalWindow = input.int(10, "Signal Validity (bars)", minval=1)
+macdFast = input.int(14, "Fast SMA", minval=1)
+macdSlow = input.int(28, "Slow SMA", minval=1)
+tpPct = input.float(4.0, "Take Profit %", minval=0.1)
+slPct = input.float(2.0, "Stop Loss %", minval=0.1)
+
+// --- Oscillator ---
+rsi = ta.rsi(close, rsiPeriod)
+
+// --- Pivot detection on price ---
+pricePivotLow = ta.pivotlow(low, pivotLen, pivotLen)
+pricePivotHigh = ta.pivothigh(high, pivotLen, pivotLen)
+
+// RSI value at the pivot bar (pivots confirm pivotLen bars later)
+rsiAtPivot = rsi[pivotLen]
+
+// --- Track previous confirmed price pivots and the RSI at those bars ---
+var float prevPricePivotLow = na
+var float prevRsiAtPivotLow = na
+var float prevPricePivotHigh = na
+var float prevRsiAtPivotHigh = na
+
+// Regular bull divergence: price makes a lower low, RSI makes a higher low
+bullDiv = not na(pricePivotLow) and not na(prevPricePivotLow) and pricePivotLow < prevPricePivotLow and rsiAtPivot > prevRsiAtPivotLow
+// Regular bear divergence: price makes a higher high, RSI makes a lower high
+bearDiv = not na(pricePivotHigh) and not na(prevPricePivotHigh) and pricePivotHigh > prevPricePivotHigh and rsiAtPivot < prevRsiAtPivotHigh
+
+if not na(pricePivotLow)
+    prevPricePivotLow := pricePivotLow
+    prevRsiAtPivotLow := rsiAtPivot
+
+if not na(pricePivotHigh)
+    prevPricePivotHigh := pricePivotHigh
+    prevRsiAtPivotHigh := rsiAtPivot
+
+// --- Divergence markers on the chart ---
+plotshape(bullDiv, "Bull Divergence", style=shape.triangleup, location=location.belowbar, color=color.new(color.green, 0), size=size.small)
+plotshape(bearDiv, "Bear Divergence", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.small)
+
+// --- Trend filter ---
+fastSma = ta.sma(close, macdFast)
+slowSma = ta.sma(close, macdSlow)
+
+bullRecently = ta.barssince(bullDiv) < signalWindow
+bearRecently = ta.barssince(bearDiv) < signalWindow
+
+longCondition = ta.crossover(fastSma, slowSma) and bullRecently
+shortCondition = ta.crossunder(fastSma, slowSma) and bearRecently
+
+// --- Strategy Execution ---
+if (longCondition and strategy.position_size == 0)
+    strategy.entry("Enter Long", strategy.long)
+    strategy.exit("Exit Long", "Enter Long", limit = close * (1 + tpPct / 100), stop = close * (1 - slPct / 100))
+
+if (shortCondition and strategy.position_size == 0)
+    strategy.entry("Enter Short", strategy.short)
+    strategy.exit("Exit Short", "Enter Short", limit = close * (1 - tpPct / 100), stop = close * (1 + slPct / 100))
+
+plot(slowSma, "Slow SMA", color=color.new(color.white, 0))
+plot(fastSma, "Fast SMA", color=color.new(color.orange, 0))

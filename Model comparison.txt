@@ -1,0 +1,24 @@
+To compare the difference in embedding returns, Two models are used:
+- qwen3-embedding:4b
+- qwen3-embedding:0.6b
+
+the 4b model returns a 2560 dimensional array, while the 0.6b returns a 1024dim length vector.
+Both models can run on consumer class hardware, so the indicator creator can verify the result on its own.
+
+The similarity thresholds range from 0 to 1, while 1 is exactly the same indicator, modified indicators range from 0.95 to 1, while stronger modifications return between 0.85 to 0.95
+A logarithmic scale would be better to visualize the results. 
+
+Two possible outcomes are possible: false positive: a indicator gets recognized as a child, while it actually isnt'it
+false negative: a indicator gets not recognized as child, although its code is clearly evolved out of the parent. 
+
+The most important differences occured:
+04_Pulse_mean_acc vs its strategy: 0.962 → 0.959 — both flag REMIX (≥0.93), still the only remix verdict
+02_zeierman_trend vs its strategy: 0.931 → 0.898 — demoted from remix to related in 4b
+12_macd_crossover vs macd_ema: 0.906 → 0.896
+macd_ema vs mtf_ema: 0.878 → 0.815
+
+As the embedding in 4b takes like 5-6 times longer, we should stick for the 0.6b model for now.
+Take Note: Its not possible to change models afterwards, once you start with one, then pick another one, the results are not comparable anymore
+
+Before parsing the indicator to the model, we cut out header and comments, to prevent spoofing the algorithm with comments
+

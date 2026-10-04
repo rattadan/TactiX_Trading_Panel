@@ -1,0 +1,107 @@
+//@version=5
+// @title: RSI Divergence — Pivot Based
+// @description: Pivot-based RSI divergence indicator. Draws divergence lines on the RSI pane and marks Bull/Bear signals with alerts.
+indicator("RSI Divergence — Pivot Based", overlay=false)
+
+// Live indicators
+// @scale: pivotLeft, pivotRight, maxBars, trendMA
+macdFast = input.int(12, "MACD Fast", minval=1)
+macdSlow = input.int(26, "MACD Slow", minval=1)
+macdSignal = input.int(9, "MACD Signal", minval=1)
+rsiPeriod = input.int(14, "RSI Period", minval=1)
+stochPeriod = input.int(14, "Stoch Period", minval=1)
+stochKSmooth = input.int(3, "Stoch %K", minval=1)
+stochDSmooth = input.int(3, "Stoch %D", minval=1)
+
+// --- Inputs ---
+pivotLeft = input.int(5, "Pivot Lookback Left", minval=1)
+pivotRight = input.int(5, "Pivot Lookback Right", minval=1)
+maxBars = input.int(60, "Max Bars Between Pivots", minval=10, maxval=200)
+src = input.source(close, "Source")
+showHidden = input.bool(true, "Show Hidden Divergence")
+trendMA = input.int(200, "Trend MA Length", minval=50)
+
+// --- RSI ---
+rsiValue = ta.rsi(src, rsiPeriod)
+plot(rsiValue, "RSI", color=color.new(color.purple, 0), linewidth=2)
+hline(70, "Overbought", color=color.new(color.red, 0), linestyle=hline.style_dotted)
+hline(30, "Oversold", color=color.new(color.green, 0), linestyle=hline.style_dotted)
+
+// --- Pivot Detection ---
+// Pivots are confirmed `pivotRight` bars after the pivot bar
+pivotLowPrice = ta.pivotlow(low, pivotLeft, pivotRight)
+pivotHighPrice = ta.pivothigh(high, pivotLeft, pivotRight)
+
+// RSI value at the pivot bar (guaranteed to exist, unlike an RSI pivot which may not align)
+rsiAtPivot = rsiValue[pivotRight]
+
+// --- Track Previous Pivots ---
+var float prevPivotLowPrice = na
+var int prevPivotLowBar = na
+var float prevPivotLowRSI = na
+
+var float prevPivotHighPrice = na
+var int prevPivotHighBar = na
+var float prevPivotHighRSI = na
+
+// --- Bullish Divergence (price lower low, RSI higher low) ---
+// --- Hidden Bullish Divergence (price higher low, RSI lower low) ---
+bullDiv = false
+hiddenBullDiv = false
+if not na(pivotLowPrice)
+    currBar = bar_index - pivotRight
+    if not na(prevPivotLowPrice)
+        barDiff = currBar - prevPivotLowBar
+        if barDiff <= maxBars and barDiff > 0
+            if pivotLowPrice < prevPivotLowPrice and rsiAtPivot > prevPivotLowRSI
+                bullDiv := true
+                line.new(prevPivotLowBar, prevPivotLowRSI, currBar, rsiAtPivot, color=color.new(color.green, 0), width=2)
+            if showHidden and pivotLowPrice > prevPivotLowPrice and rsiAtPivot < prevPivotLowRSI
+                hiddenBullDiv := true
+                line.new(prevPivotLowBar, prevPivotLowRSI, currBar, rsiAtPivot, color=color.new(color.lime, 0), width=1, style=line.style_dashed)
+    prevPivotLowPrice := pivotLowPrice
+    prevPivotLowBar := currBar
+    prevPivotLowRSI := rsiAtPivot
+
+// --- Bearish Divergence (price higher high, RSI lower high) ---
+// --- Hidden Bearish Divergence (price lower high, RSI higher high) ---
+bearDiv = false
+hiddenBearDiv = false
+if not na(pivotHighPrice)
+    currBarHigh = bar_index - pivotRight
+    if not na(prevPivotHighPrice)
+        barDiffHigh = currBarHigh - prevPivotHighBar
+        if barDiffHigh <= maxBars and barDiffHigh > 0
+            if pivotHighPrice > prevPivotHighPrice and rsiAtPivot < prevPivotHighRSI
+                bearDiv := true
+                line.new(prevPivotHighBar, prevPivotHighRSI, currBarHigh, rsiAtPivot, color=color.new(color.red, 0), width=2)
+            if showHidden and pivotHighPrice < prevPivotHighPrice and rsiAtPivot > prevPivotHighRSI
+                hiddenBearDiv := true
+                line.new(prevPivotHighBar, prevPivotHighRSI, currBarHigh, rsiAtPivot, color=color.new(color.orange, 0), width=1, style=line.style_dashed)
+    prevPivotHighPrice := pivotHighPrice
+    prevPivotHighBar := currBarHigh
+    prevPivotHighRSI := rsiAtPivot
+
+// --- Trend Context ---
+trendLine = ta.ema(close, trendMA)
+upTrend = close > trendLine
+downTrend = close < trendLine
+
+trendAlignedBull = bullDiv and upTrend
+trendAlignedBear = bearDiv and downTrend
+
+// --- Signals ---
+plotshape(bullDiv, "Bullish Divergence", style=shape.labelup, location=location.bottom, color=color.new(color.green, 0), text="Bull", size=size.small)
+plotshape(bearDiv, "Bearish Divergence", style=shape.labeldown, location=location.top, color=color.new(color.red, 0), text="Bear", size=size.small)
+plotshape(hiddenBullDiv, "Hidden Bull", style=shape.diamond, location=location.bottom, color=color.new(color.lime, 0), text="Hidden Bull", size=size.tiny)
+plotshape(hiddenBearDiv, "Hidden Bear", style=shape.diamond, location=location.top, color=color.new(color.orange, 0), text="Hidden Bear", size=size.tiny)
+plotshape(trendAlignedBull, "Trend-Aligned Bull", style=shape.circle, location=location.bottom, color=color.new(color.teal, 0), text="Trend-Bull", size=size.small)
+plotshape(trendAlignedBear, "Trend-Aligned Bear", style=shape.circle, location=location.top, color=color.new(color.maroon, 0), text="Trend-Bear", size=size.small)
+
+// --- Alerts ---
+alertcondition(bullDiv, "Bullish RSI Divergence", "RSI bullish divergence detected")
+alertcondition(bearDiv, "Bearish RSI Divergence", "RSI bearish divergence detected")
+alertcondition(hiddenBullDiv, "Hidden Bullish RSI Divergence", "Hidden RSI bullish divergence detected")
+alertcondition(hiddenBearDiv, "Hidden Bearish RSI Divergence", "Hidden RSI bearish divergence detected")
+alertcondition(trendAlignedBull, "Trend-Aligned Bull Div", "Bullish RSI divergence WITH uptrend — high confidence")
+alertcondition(trendAlignedBear, "Trend-Aligned Bear Div", "Bearish RSI divergence WITH downtrend — high confidence")

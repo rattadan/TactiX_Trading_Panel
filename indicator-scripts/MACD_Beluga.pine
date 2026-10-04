@@ -1,0 +1,891 @@
+//@version=5
+// @title: MACD v2.4 ULTIMATE EDITION
+// @description:MACD v2.4 ULTIMATE EDITION 
+// ████████████████████████████████████████████████████████████████████████████████
+// █  🌀 MACD v2.4 ULTIMATE EDITION (Hybrid Otopilot + Akıllı Kalkan + MTF)
+// █  =============================================================================
+// █  CREATOR: TradingView (Original MACD)
+// █  UPGRADED BY: @TTesviyeci + AI
+// █
+// █  🎯 YENİLİKLER (v2.4 HAZIR PROFİLLER & UI/UX REVİZYONU):
+// █  • 6 Farklı Karakter: Standart, Fibonacci, Balina, Ağır Çekim ve Scalp profilleri eklendi.
+// █  • Gelişmiş Tooltipler: Her ayarın yanına sistemin mantığını anlatan "ℹ️" rehberleri eklendi.
+// █
+// █  🎯 DÜZELTMELER (v2.2 & v2.3 MİRASI):
+// █  • Akıllı Kalkan & Hybrid Otopilot: Sahte sinyal filtresi ve otomatik Close geçişi.
+// █  • TKE Template: Temel periyotlar request.security DIŞINDA "simple int" hesaplandı.
+// █  • Dinamik Lookahead eklendi ve her TF için security ayrı ayrı çağrıldı.
+// ████████████████████████████████████████████████████████████████████████████████
+// =============================================================================
+// 🎓 KULLANIM KILAVUZU (Yorum olarak)
+// =============================================================================
+// ████████████████████████████████████████████████████████████████████████████
+// █  📚 KULLANIM KILAVUZU
+// █  =============================================================================
+// █
+// █  🎯 YENİ BAŞLAYANLAR İÇİN (HAZIR PROFİLLER):
+// █  1. Ayarlardan "Hazır MACD Profilleri" menüsünü açın.
+// █  2. "Standart (12-26-9)" veya pürüzsüz trend için "Fibonacci Swing" seçin.
+// █  3. MTF Tablosunu açın, Fısıltı Modunu takip edin.
+// █  4. 🚀 RALLİ MODU → AL, 🩸 BIÇAK DÜŞÜYOR → SAT
+// █
+// █  🎯 ORTA SEVİYE İÇİN (ADAPTİF MOTOR):
+// █  1. Period Modu: "Otomatik (Adaptif)" seçin.
+// █  2. Adaptasyon Seviyesi: "Basit (Vol + Hacim)"
+// █  3. Divergence'ları (Uyumsuzlukları) takip edin.
+// █  4. 💎 ALTIN VURUŞ + Bullish Div → AGRESİF AL
+// █
+// █  🎯 İLERİ SEVİYE İÇİN (TAM KONTROL):
+// █  1. Period Modu: "Otomatik (Adaptif)"
+// █  2. Adaptasyon Seviyesi: "Tam (Vol + Hacim + Trend + Rejim)"
+// █  3. Screener filtrelerini kullanın ve Kombo alarmları kurun (Div + Fısıltı).
+// █
+// █  ⚙️ MACD PROFİLLERİ NE İŞE YARAR?
+// █  • Standart (12-26-9): Klasik, herkesin bildiği fabrika ayarı.
+// █  • Fibonacci Swing (13-34-8): Gürültüyü süzen, sahte sinyalleri azaltan yapı.
+// █  • Kurumsal Balina (20-50-10): Sadece büyük fonların girdiği ana trendler.
+// █  • Ağır Çekim Trend (55-68-6): Çok güvenli, uzun vadeli trend teyidi.
+// █  • Agresif Scalp (5-13-3): Hızlı patlamaları yakalayan dar makas (Kısa vade).
+// █  • Özel: Kendi manuel değerlerinizi kullanmanızı sağlar.
+// █
+// █  🕵️ SCREENER STRATEJİLERİ:
+// █
+// █  STRATEJİ 1: SÜPER AL
+// █  • SCR: 🏆 SÜPER AL (Div + Ralli) = 1  |  MACD Yukarı Kesti Signal = 1
+// █  → En güçlü AL sinyali
+// █
+// █  STRATEJİ 2: ALTIN VURUŞ
+// █  • SCR: 💎 ALTIN VURUŞ = 1  |  Regular Bullish Div = 1  |  Histogram < 0 = 1
+// █  → En iyi fırsat (Büyük trend güçlü, kısa vade düşüş)
+// █
+// █  STRATEJİ 3: TREND DEVAM
+// █  • SCR: 🚀 TREND DEVAM (Hidden + Ralli) = 1  |  MACD > Signal = 1
+// █  → Trend devam ediyor, TUT!
+// █
+// █  STRATEJİ 4: NAKİT KAL
+// █  • SCR: 🩸 BIÇAK DÜŞÜYOR = 1  |  Regular Bearish Div = 1
+// █  → Tüm TF'ler zayıf, SATIP BEKLE
+// █
+// █  🔔 ALARM ÖNERİLERİ:
+// █  • 🏆 SÜPER AL (Div + Ralli) → En güçlü AL sinyali
+// █  • 💎 ALTIN VURUŞ (Div + Düzeltme) → En iyi fırsat
+// █  • 🚀 TREND DEVAM (Hidden + Ralli) → Trend devam, TUT
+// █  • 🏆 SÜPER SAT (Div + Bıçak) → En güçlü SAT sinyali
+// █
+// █  ⚠️ ÖNEMLİ NOTLAR & İPUÇLARI:
+// █  • Adaptive Period Engine'i ilk başta "Sadece Timeframe" ile test edin.
+// █  • Sonra "Basit (Vol + Hacim)", en son "Tam" modunu deneyin.
+// █  • MTF Matrix + Fısıltı Modu 4 timeframe'i tek bakışta gösterir.
+// █
+// █  VERSİYON GEÇMİŞİ:
+// █  • v1.0 (2024): Temel MACD + MTF Matrix
+// █  • v2.0 (Şubat 2025): Adaptive Engine + Hybrid Div + Fısıltı Modu
+// █  • v2.1 - v2.3 (Mart 2026): MTF Okları, TKE Şablonu, Otopilot ve Kalkan
+// █  • v2.4 (Nisan 2026): 6 Hazır MACD Profili ve Gelişmiş Tooltip (UI/UX) Entegrasyonu
+// ████████████████████████████████████████████████████████████████████████████
+
+
+strategy(title="🌀 MACD v2.4 Ultimate Edition", shorttitle="🌀 MACD v2.4 Ultimate Edition", overlay=false, max_lines_count=500, max_labels_count=500, initial_capital=1000, currency=currency.USD, default_qty_type=strategy.percent_of_equity, default_qty_value=100, commission_type=strategy.commission.percent, commission_value=0.1, slippage=1)
+
+// =============================================================================
+// YENİ EKLENEN TOOLTİPLER (KALKAN VE HYBRID İÇİN)
+// =============================================================================
+string TT_KALKAN_TR  = "🛡️ Trend Filtresi: Fiyatın genel yönüne ters düşen sahte uyumsuzlukları engeller.\n\n• AÇIK: Fiyat ortalamanın üzerindeyse sadece Boğa, altındaysa sadece Ayı sinyallerine izin verir.\n• KAPALI: Trende bakmaksızın tüm uyumsuzlukları çizer."
+string TT_KALKAN_VOL = "⚡ Volatilite (Lastik) Sensörü: Fiyatın ortalamadan ne kadar saptığını ölçer.\n\nTrend tersi olsa bile, fiyat Bollinger dışına taştıysa (aşırı ucuz/pahalı) sistem 'Buradan tepki/dönüş gelebilir' der ve uyumsuzluk sinyaline İZİN VERİR."
+string TT_AUTO_ATR   = "ATR, kendi ortalamasının belirlenen çarpan kadar üstüne çıkarsa piyasa 'Kaotik' kabul edilir ve iğneler yerine otomatik olarak Kapanış (Close) fiyatları baz alınır."
+string TT_AUTO_BB    = "Bollinger bant genişliği, kendi ortalamasını aşarsa piyasada 'Patlama' var kabul edilir ve sahte iğnelere aldanmamak için Kapanış (Close) fiyatlarına geçilir."
+
+// =============================================================================
+// 🧠 ADAPTIVE PERIOD ENGINE - FONKSİYONLAR
+// =============================================================================
+f_get_base_macd_periods() =>
+    if timeframe.isminutes and timeframe.multiplier <= 5
+        [12, 26, 9]
+    else if timeframe.isminutes and timeframe.multiplier <= 15
+        [12, 26, 9]
+    else if timeframe.isminutes and timeframe.multiplier <= 60
+        [16, 34, 12]
+    else if timeframe.isminutes
+        [20, 40, 15]
+    else if timeframe.isdaily
+        [12, 26, 9]
+    else if timeframe.isweekly
+        [12, 26, 9]
+    else if timeframe.ismonthly
+        [12, 26, 9]
+    else
+        [12, 26, 9]
+
+f_get_volatility_multiplier(simple int atr_len, simple int atr_sma_len, simple float sensitivity) =>
+    float atr_current = ta.atr(atr_len)
+    float atr_avg = ta.sma(ta.atr(atr_len), atr_sma_len)
+    float vol_ratio = atr_current / atr_avg
+    float base_mult = vol_ratio > 1.5 ? 1.4 : vol_ratio > 1.2 ? 1.2 : vol_ratio > 0.8 ? 1.0 : vol_ratio > 0.5 ? 0.85 : 0.7
+    1.0 + (base_mult - 1.0) * sensitivity
+
+f_get_volume_multiplier(simple int vol_sma_len, simple float sensitivity) =>
+    float vol_current = volume
+    float vol_avg = ta.sma(volume, vol_sma_len)
+    float vol_ratio = vol_current / vol_avg
+    float base_mult = vol_ratio > 2.0 ? 0.85 : vol_ratio > 1.5 ? 0.92 : vol_ratio > 0.7 ? 1.0 : vol_ratio > 0.4 ? 1.1 : 1.2
+    1.0 + (base_mult - 1.0) * sensitivity
+
+f_get_trend_strength_multiplier(simple int adx_len) =>
+    [diPlus, diMinus, adx_value] = ta.dmi(adx_len, adx_len)
+    adx_value > 40 ? 1.3 : adx_value > 25 ? 1.15 : adx_value > 20 ? 1.0 : adx_value > 15 ? 0.9 : 0.8
+
+f_get_market_regime_multiplier() =>
+    float ema_200 = ta.ema(close, 200)
+    float ema_50 = ta.ema(close, 50)
+    if close > ema_200 and ema_50 > ema_200
+        0.85  
+    else if close < ema_200 and ema_50 < ema_200
+        1.2   
+    else
+        1.4   
+
+f_ema(src, length) =>
+    alpha = 2.0 / (length + 1)
+    var float ema = na
+    ema := na(ema) ? src : alpha * src + (1 - alpha) * ema[1]
+    ema
+
+f_sma(src, length) =>
+    float sum = 0.0
+    for i = 0 to length - 1
+        sum += src[i]
+    sum / length
+
+// =============================================================================
+// ⚙️ AYARLAR (Tooltipler Eklendi)
+// =============================================================================
+grp_adaptive = "🧠 ADAPTIVE PERIOD ENGINE"
+
+// @scale: atr_length, atr_sma_length, volume_sma_length, adx_length, trendPeriod, autoAtrLen, autoAtrSma, autoBbLen, autoBbSma, lookbackLeft, lookbackRight
+adaptive_mode = input.string("Otomatik (Adaptif)", "Period Modu", options=["Manuel (Sabit Değerler)", "Otomatik (Adaptif)"], group=grp_adaptive,
+     tooltip="🎯 PERIOD MODU:\n\n• MANUEL: Kendi belirlediğiniz sabit değerler. Tam kontrol sizde.\n• OTOMATİK: Piyasa koşullarına (Volatilite, hacim, trend) göre otomatik ayarlama. Sahte sinyalleri azaltır.")
+
+// Live indicators
+macdFast = input.int(12, "MACD Fast", minval=5, maxval=30, group=grp_adaptive,
+     tooltip="⚡ FAST EMA PERİYODU:\n\nHızlı hareketli ortalama periyodu.\n• 8-10: Çok hızlı (Gürültülü)\n• 12: Standart (Önerilen) ✅\n• 15-20: Yavaş")
+
+macdSlow = input.int(26, "MACD Slow", minval=15, maxval=60, group=grp_adaptive,
+     tooltip="🐌 SLOW EMA PERİYODU:\n\nYavaş hareketli ortalama periyodu.\n• 20-24: Hızlı\n• 26: Standart (Önerilen) ✅\n• 30-40: Yavaş")
+
+macdSignal = input.int(9, "MACD Signal", minval=5, maxval=20, group=grp_adaptive,
+     tooltip="📊 SİGNAL PERİYODU:\n\nMACD'nin hareketli ortalaması.\n• 5-7: Hızlı (Erken sinyal)\n• 9: Standart (Önerilen) ✅\n• 12-15: Yavaş (Geç sinyal)")
+rsiPeriod = input.int(14, "RSI Period", minval=1, group=grp_adaptive)
+stochPeriod = input.int(14, "Stoch Period", minval=1)
+stochKSmooth = input.int(3, "Stoch %K", minval=1)
+stochDSmooth = input.int(3, "Stoch %D", minval=1)
+
+// --- YENİ EKLENEN: HAZIR MACD PROFİLLERİ ---
+macd_tooltip = "🎯 HANGİ PROFİLİ SEÇMELİ?\n\n1️⃣ Standart: Klasik 12-26-9 MACD ayarı.\n2️⃣ Fibonacci Swing: Sahte sinyalleri azaltan pürüzsüz yapı.\n3️⃣ Kurumsal Balina: Sadece büyük fonların girdiği ana trendler.\n4️⃣ Ağır Çekim Trend: Güvenli ve uzun vadeli trend teyidi.\n5️⃣ Agresif Scalp: Hızlı patlamaları yakalayan dar makas.\n6️⃣ Özel: Yukarıda girdiğiniz manuel değerleri devreye sokar."
+
+macd_profile = input.string("Standart (12-26-9)", "🎯 Hazır MACD Profilleri", options=["Standart (12-26-9)", "Fibonacci Swing (13-34-8)", "Kurumsal Balina (20-50-10)", "Ağır Çekim Trend (55-68-6)", "Agresif Scalp (5-13-3)", "Özel (Yukarıdaki Manuel Değerler)"], group=grp_adaptive, tooltip=macd_tooltip)
+
+int final_macdFast = macd_profile == "Standart (12-26-9)" ? 12 : macd_profile == "Fibonacci Swing (13-34-8)" ? 13 : macd_profile == "Kurumsal Balina (20-50-10)" ? 20 : macd_profile == "Ağır Çekim Trend (55-68-6)" ? 55 : macd_profile == "Agresif Scalp (5-13-3)" ? 5 : macdFast
+
+int final_macdSlow = macd_profile == "Standart (12-26-9)" ? 26 : macd_profile == "Fibonacci Swing (13-34-8)" ? 34 : macd_profile == "Kurumsal Balina (20-50-10)" ? 50 : macd_profile == "Ağır Çekim Trend (55-68-6)" ? 68 : macd_profile == "Agresif Scalp (5-13-3)" ? 13 : macdSlow
+
+int final_macdSignal = macd_profile == "Standart (12-26-9)" ? 9 : macd_profile == "Fibonacci Swing (13-34-8)" ? 8 : macd_profile == "Kurumsal Balina (20-50-10)" ? 10 : macd_profile == "Ağır Çekim Trend (55-68-6)" ? 6 : macd_profile == "Agresif Scalp (5-13-3)" ? 3 : macdSignal
+// -------------------------------------------
+
+adaptive_level = input.string("Tam (Vol + Hacim + Trend + Rejim)", "Adaptasyon Seviyesi", options=["Sadece Timeframe", "Basit (Vol + Hacim)", "Tam (Vol + Hacim + Trend + Rejim)"], group=grp_adaptive,
+     tooltip="🧠 ADAPTASYON SEVİYESİ:\n\n• Sadece Timeframe: Sadece zaman dilimine göre basit mod.\n• Basit: Volatilite + Hacim'e göre (Hızlı başlangıç).\n• Tam: Tüm faktörleri hesaba katar (En akıllı mod 🏆).")
+
+vol_sensitivity = input.float(1.0, "Volatilite Hassasiyeti", minval=0.5, maxval=2.0, step=0.1, group=grp_adaptive,
+     tooltip="📈 VOLATİLİTE HASSASİYETİ:\n\nVolatilite değişimlerine ne kadar tepki verileceği.\n• 0.5: Az tepki\n• 1.0: Normal ✅\n• 2.0: Çok tepki")
+
+volume_sensitivity = input.float(1.0, "Hacim Hassasiyeti", minval=0.5, maxval=2.0, step=0.1, group=grp_adaptive,
+     tooltip="📊 HACİM HASSASİYETİ:\n\nHacim değişimlerine ne kadar tepki verileceği.\n• 0.5: Az tepki\n• 1.0: Normal ✅\n• 2.0: Çok tepki")
+
+atr_length = input.int(14, "ATR Length", group=grp_adaptive, tooltip="📏 ATR PERİYODU:\nVolatilite ölçümü için kullanılır. Standart: 14")
+atr_sma_length = input.int(50, "ATR SMA Length", group=grp_adaptive, tooltip="📊 ATR ORTALAMA PERİYODU:\nVolatilite karşılaştırması için. Standart: 50")
+volume_sma_length = input.int(20, "Volume SMA Length", group=grp_adaptive, tooltip="📊 HACİM ORTALAMA PERİYODU:\nHacim karşılaştırması için. Standart: 20")
+adx_length = input.int(14, "ADX Length", group=grp_adaptive, tooltip="📈 ADX PERİYODU:\nTrend gücü ölçümü için. Standart: 14")
+
+min_fast = input.int(5, "Min Fast Length", group=grp_adaptive, tooltip="⬇️ MİNİMUM FAST PERİYODU:\nAdaptive Engine'in kullanabileceği en küçük Fast periyodu.")
+max_fast = input.int(30, "Max Fast Length", group=grp_adaptive, tooltip="⬆️ MAKSİMUM FAST PERİYODU:\nAdaptive Engine'in kullanabileceği en büyük Fast periyodu.")
+min_slow = input.int(15, "Min Slow Length", group=grp_adaptive, tooltip="⬇️ MİNİMUM SLOW PERİYODU:\nAdaptive Engine'in kullanabileceği en küçük Slow periyodu.")
+max_slow = input.int(60, "Max Slow Length", group=grp_adaptive, tooltip="⬆️ MAKSİMUM SLOW PERİYODU:\nAdaptive Engine'in kullanabileceği en büyük Slow periyodu.")
+min_signal = input.int(5, "Min Signal Length", group=grp_adaptive, tooltip="⬇️ MİNİMUM SİGNAL PERİYODU:\nAdaptive Engine'in kullanabileceği en küçük Signal periyodu.")
+max_signal = input.int(20, "Max Signal Length", group=grp_adaptive, tooltip="⬆️ MAKSİMUM SİGNAL PERİYODU:\nAdaptive Engine'in kullanabileceği en büyük Signal periyodu.")
+
+grp_basic = "⚙️ TEMEL AYARLAR"
+src = input.source(close, "Kaynak Veri", group=grp_basic, tooltip="📊 KAYNAK VERİ:\nMACD hesaplamasında kullanılacak fiyat. Genelde Kapanış (Close) kullanılır.")
+sma_source = input.string("EMA", "Oscillator MA Type", options=["SMA", "EMA"], group=grp_basic, tooltip="📈 OSCİLLATOR ORTALAMA TİPİ:\nFast ve Slow hareketli ortalama tipi. EMA daha hızlı tepki verir.")
+sma_signal = input.string("EMA", "Signal Line MA Type", options=["SMA", "EMA"], group=grp_basic, tooltip="📊 SİGNAL ORTALAMA TİPİ:\nSignal çizgisi hareketli ortalama tipi. EMA önerilir.")
+
+// =============================================================================
+// 🛡️ AKILLI FİLTRE (TREND & VOLATİLİTE KALKANI) - YENİ
+// =============================================================================
+string GRP_KALKAN = "🛡️ AKILLI FİLTRE (TREND & VOLATİLİTE)"
+bool   useTrendFilter = input.bool(false, "🛡️ Trend Filtresini Aç", group = GRP_KALKAN, tooltip = TT_KALKAN_TR)
+int    trendPeriod    = input.int(55, "Fibonacci Periyodu", options=[13,21,34,55,89,144,233,377], group = GRP_KALKAN)
+string trendType      = input.string("EMA", "Ortalama Tipi", options=["EMA", "HMA", "SMA"], group = GRP_KALKAN)
+
+bool   useVolFilter   = input.bool(false, "⚡ Volatilite (Lastik) Sensörünü Aç", group = GRP_KALKAN, tooltip = TT_KALKAN_VOL)
+float  volMultiplier  = input.float(2.0, "Bollinger Sapma Çarpanı", step=0.5, group = GRP_KALKAN)
+
+// =============================================================================
+// 🔍 HYBRID DIVERGENCE ENGINE (OTOPİLOT EKLENTİLERİYLE)
+// =============================================================================
+grp_div = "🔍 HYBRID DIVERGENCE ENGINE"
+calculateDivergence = input.bool(true, "Divergence Hesapla", group=grp_div, tooltip="Uyumsuzluk (Divergence) taramasını açıp kapatır.")
+
+div_show_type = input.string("Her İkisi (Regular + Hidden)", title="Gösterilecek Uyumsuzluk Tipi", 
+     options=["Her İkisi (Regular + Hidden)", "Sadece Regular (Klasik)", "Sadece Hidden (Gizli)"], group=grp_div,
+     tooltip="Ekranda hangi uyumsuzlukların çizileceğini belirler. Grafik kalabalığını önlemek için filtreleyebilirsiniz.")
+
+// --- HYBRID OTOPİLOT AYARLARI ---
+div_price_source = input.string("İğneler (High/Low)", title="Fiyat Kaynağı (Kritik!)", 
+     options=["İğneler (High/Low)", "Kapanışlar (Close)", "Auto (ATR Tabanlı)", "Auto (Bollinger Tabanlı)"], group=grp_div,
+     tooltip="• İğneler: Klasik yöntem.\n• Kapanışlar: Sahte iğneleri filtreler.\n• Auto (ATR): Volatilite artınca otomatik kapanışlara geçer.\n• Auto (Bollinger): Bantlar patladığında kapanışlara geçer.")
+
+int    autoAtrLen  = input.int(14, title="Auto-ATR Periyot", inline="atr_auto", group=grp_div)
+int    autoAtrSma  = input.int(50, title="Ortalama", inline="atr_auto", group=grp_div)
+float  autoAtrMult = input.float(1.5, title="Çarpan", step=0.1, inline="atr_auto", group=grp_div, tooltip=TT_AUTO_ATR)
+int    autoBbLen   = input.int(20, title="Auto-BB Periyot", inline="bb_auto", group=grp_div)
+int    autoBbSma   = input.int(50, title="Ortalama", inline="bb_auto", group=grp_div, tooltip=TT_AUTO_BB)
+// --------------------------------
+
+div_range_mode = input.string("Otomatik (Perioda Göre)", title="Tarama Aralığı Modu", 
+     options=["Otomatik (Perioda Göre)", "Manuel (Sabit)"], group=grp_div,
+     tooltip="Divergence ararken kaç mum geriye bakılacağını belirler.\n\n• Otomatik: MACD'nin Slow Length periyoduna göre ideal aralığı kendi hesaplar. (ÖNERİLEN)\n• Manuel: Aşağıdaki sabit değerleri kullanır.")
+
+lookbackRight = input.int(5, "Pivot Geri Bakış Sağa", minval=1, maxval=20, group=grp_div, tooltip="🎯 Tepe/dip teyit süresi (sağ taraf).\n• 5: Dengeli (Önerilen) ✅")
+lookbackLeft = input.int(5, "Pivot Geri Bakış Sola", minval=1, maxval=20, group=grp_div, tooltip="🎯 Tepe/dip oluşum süresi (sol taraf).")
+maxPivots = input.int(10, "Max Pivot Memory", minval=3, maxval=20, group=grp_div, tooltip="🧠 Hafızada tutulacak maksimum tepe/dip sayısı. 10 Önerilir.")
+
+maxBarsBack_input = input.int(100, "[Manuel] Max Bars Back", minval=30, maxval=200, group=grp_div, tooltip="Manuel modda: Uyumsuzluk ararken kaç mum geriye gidileceği.")
+maxDivLines = input.int(3, "Max Divergence Lines", minval=1, maxval=5, group=grp_div, tooltip="📊 Aynı anda gösterilecek maksimum uyumsuzluk çizgisi.")
+rangeUpper_input = input.int(60, "[Manuel] Max Lookback Range", minval=10, maxval=200, group=grp_div, tooltip="Manuel modda: İki uyumsuzluk noktası arasındaki MAKSİMUM mum sayısı.")
+rangeLower_input = input.int(5, "[Manuel] Min Lookback Range", minval=1, maxval=50, group=grp_div, tooltip="Manuel modda: İki uyumsuzluk noktası arasındaki MİNİMUM mum sayısı.")
+
+divLineStyle = input.string("Solid", "Divergence Line Style", options=["Solid", "Dashed", "Dotted"], group=grp_div)
+divLineWidth = input.int(2, "Divergence Line Width", minval=1, maxval=4, group=grp_div)
+show_div_on_price = input.bool(true, title="Fiyat Grafiğine Çizgi Çiz", group=grp_div, tooltip="Uyumsuzluk çizgilerini alt panelin yanı sıra ana fiyat grafiği üzerine de çizer (force_overlay).")
+bearColor = input.color(color.red, "Regular Bearish Color", group=grp_div)
+bullColor = input.color(color.green, "Regular Bullish Color", group=grp_div)
+hiddenBearColor = input.color(color.new(color.red, 50), "Hidden Bearish Color", group=grp_div)
+hiddenBullColor = input.color(color.new(color.green, 50), "Hidden Bullish Color", group=grp_div)
+textColor = input.color(color.white, "Label Text Color", group=grp_div)
+
+getLineStyle(styleStr) => styleStr == 'Dashed' ? line.style_dashed : styleStr == 'Dotted' ? line.style_dotted : line.style_solid
+
+// =============================================================================
+// 🎯 ADAPTIVE PERIOD HESAPLAMA (Ana Grafik İçin)
+// =============================================================================
+[base_fast, base_slow, base_signal] = f_get_base_macd_periods()
+float vol_mult = 1.0, float volume_mult = 1.0, float trend_mult = 1.0, float regime_mult = 1.0
+
+if adaptive_mode == "Otomatik (Adaptif)"
+    if adaptive_level == "Basit (Vol + Hacim)" or adaptive_level == "Tam (Vol + Hacim + Trend + Rejim)"
+        vol_mult := f_get_volatility_multiplier(atr_length, atr_sma_length, vol_sensitivity)
+        volume_mult := f_get_volume_multiplier(volume_sma_length, volume_sensitivity)
+    if adaptive_level == "Tam (Vol + Hacim + Trend + Rejim)"
+        trend_mult := f_get_trend_strength_multiplier(adx_length)
+        regime_mult := f_get_market_regime_multiplier()
+
+float combined_mult = vol_mult * volume_mult * trend_mult * regime_mult
+int adaptive_fast = math.round(base_fast * combined_mult)
+int adaptive_slow = math.round(base_slow * combined_mult)
+int adaptive_signal = math.round(base_signal * combined_mult)
+
+adaptive_fast := math.max(min_fast, math.min(adaptive_fast, max_fast))
+adaptive_slow := math.max(min_slow, math.min(adaptive_slow, max_slow))
+adaptive_signal := math.max(min_signal, math.min(adaptive_signal, max_signal))
+
+if adaptive_slow <= adaptive_fast
+    adaptive_slow := adaptive_fast + 5
+if adaptive_signal > adaptive_slow / 2
+    adaptive_signal := int(adaptive_slow / 2)
+
+int fast_length = adaptive_mode == "Manuel (Sabit Değerler)" ? final_macdFast : adaptive_fast
+int slow_length = adaptive_mode == "Manuel (Sabit Değerler)" ? final_macdSlow : adaptive_slow
+int signal_length = adaptive_mode == "Manuel (Sabit Değerler)" ? final_macdSignal : adaptive_signal
+
+// =============================================================================
+// 🧮 MACD HESAPLAMA (Ana Grafik İçin)
+// =============================================================================
+fast_ma = sma_source == "SMA" ? f_sma(src, fast_length) : f_ema(src, fast_length)
+slow_ma = sma_source == "SMA" ? f_sma(src, slow_length) : f_ema(src, slow_length)
+macd = fast_ma - slow_ma
+signal = sma_signal == "SMA" ? f_sma(macd, signal_length) : f_ema(macd, signal_length)
+hist = macd - signal
+
+// Yön ve Kesişim Değişkenleri (Global)
+macd_up_global = macd > macd[1]
+signal_up_global = signal > signal[1]
+hist_up_global = hist > hist[1]
+bullish_cross = ta.crossover(macd, signal)
+bearish_cross = ta.crossunder(macd, signal)
+
+// =============================================================================
+// 🛡️ KALKAN HESAPLAMALARI & İZİNLER (YENİ)
+// =============================================================================
+float kalkanMA = trendType == "EMA" ? ta.ema(close, trendPeriod) : trendType == "HMA" ? ta.hma(close, trendPeriod) : ta.sma(close, trendPeriod)
+int   trendStatus = close > kalkanMA ? 1 : close < kalkanMA ? -1 : 0
+
+float kalkanDev = volMultiplier * ta.stdev(close, trendPeriod)
+float upperKalkanBand = kalkanMA + kalkanDev
+float lowerKalkanBand = kalkanMA - kalkanDev
+
+bool isPriceOversold   = close < lowerKalkanBand
+bool isPriceOverbought = close > upperKalkanBand
+
+bool allowBullDiv = not useTrendFilter or (trendStatus == 1)  or (useVolFilter and isPriceOversold)
+bool allowBearDiv = not useTrendFilter or (trendStatus == -1) or (useVolFilter and isPriceOverbought)
+
+// =============================================================================
+// 🧠 HYBRID OTOPİLOT SENSÖRLERİ & FİYAT KAYNAĞI (YENİ)
+// =============================================================================
+float atr_val_hybrid = ta.atr(autoAtrLen)
+float atr_sma_hybrid = ta.sma(atr_val_hybrid, autoAtrSma)
+bool is_atr_volatile = atr_val_hybrid > (atr_sma_hybrid * autoAtrMult)
+
+float bb_basis_hybrid = ta.sma(close, autoBbLen)
+float bb_dev_hybrid = 2.0 * ta.stdev(close, autoBbLen)
+float bb_width_hybrid = (bb_basis_hybrid + bb_dev_hybrid) - (bb_basis_hybrid - bb_dev_hybrid)
+float bb_width_sma_hybrid = ta.sma(bb_width_hybrid, autoBbSma)
+bool is_bb_volatile = bb_width_hybrid > bb_width_sma_hybrid
+
+// 🧠 DİNAMİK HESAPLAMA MOTORU (MACD Slow Length baz alınır)
+int src_period = slow_length
+int dyn_rangeLower = int(math.max(5, math.round(src_period * 0.5)))
+int dyn_rangeUpper = int(math.min(math.round(src_period * 2.5), 80))
+int dyn_maxBarsBack = int(math.min(math.round(src_period * 4), 150))
+
+int final_rangeLower = div_range_mode == "Otomatik (Perioda Göre)" ? dyn_rangeLower : rangeLower_input
+int final_rangeUpper = div_range_mode == "Otomatik (Perioda Göre)" ? dyn_rangeUpper : rangeUpper_input
+int final_maxBarsBack = div_range_mode == "Otomatik (Perioda Göre)" ? dyn_maxBarsBack : maxBarsBack_input
+
+// Akıllı Fiyat Kaynağı Seçimi (Wick vs Close vs Auto)
+float price_high_source = high
+float price_low_source  = low
+
+if div_price_source == "Kapanışlar (Close)"
+    price_high_source := close
+    price_low_source  := close
+else if div_price_source == "Auto (ATR Tabanlı)"
+    price_high_source := is_atr_volatile ? close : high
+    price_low_source  := is_atr_volatile ? close : low
+else if div_price_source == "Auto (Bollinger Tabanlı)"
+    price_high_source := is_bb_volatile ? close : high
+    price_low_source  := is_bb_volatile ? close : low
+
+var ph_positions = array.new_int(0), var pl_positions = array.new_int(0)
+var ph_macd_vals = array.new_float(0), var pl_macd_vals = array.new_float(0)
+var ph_price_vals = array.new_float(0), var pl_price_vals = array.new_float(0)
+
+float ph = ta.pivothigh(macd, lookbackLeft, lookbackRight)
+float pl = ta.pivotlow(macd, lookbackLeft, lookbackRight)
+float macdLBR = macd[lookbackRight]
+float lowLBR = price_low_source[lookbackRight]
+float highLBR = price_high_source[lookbackRight]
+
+if not na(ph)
+    array.unshift(ph_positions, bar_index - lookbackRight)
+    array.unshift(ph_macd_vals, macdLBR)
+    array.unshift(ph_price_vals, highLBR)
+    if array.size(ph_positions) > maxPivots
+        array.pop(ph_positions), array.pop(ph_macd_vals), array.pop(ph_price_vals)
+
+if not na(pl)
+    array.unshift(pl_positions, bar_index - lookbackRight)
+    array.unshift(pl_macd_vals, macdLBR)
+    array.unshift(pl_price_vals, lowLBR)
+    if array.size(pl_positions) > maxPivots
+        array.pop(pl_positions), array.pop(pl_macd_vals), array.pop(pl_price_vals)
+
+var bool bullCond = false, var bool bearCond = false
+var bool hiddenBullCond = false, var bool hiddenBearCond = false
+var int bullDivCount = 0, var int bearDivCount = 0
+var int hiddenBullDivCount = 0, var int hiddenBearDivCount = 0
+
+bool calc_regular = (div_show_type == "Her İkisi (Regular + Hidden)" or div_show_type == "Sadece Regular (Klasik)")
+bool calc_hidden = (div_show_type == "Her İkisi (Regular + Hidden)" or div_show_type == "Sadece Hidden (Gizli)")
+
+if calculateDivergence
+    
+    // --- REGULAR (KLASİK) UYUMSUZLUKLAR ---
+    bullCond := false, bullDivCount := 0
+    if calc_regular and not na(pl) and array.size(pl_positions) >= 2
+        for x = 1 to math.min(array.size(pl_positions) - 1, maxPivots - 1)
+            int loc = array.get(pl_positions, x), float macdVal = array.get(pl_macd_vals, x), float priceVal = array.get(pl_price_vals, x)
+            int len = bar_index - lookbackRight - loc
+            if len <= final_maxBarsBack and len >= final_rangeLower and len <= final_rangeUpper
+                // KALKAN ONAYI: allowBullDiv
+                if lowLBR < priceVal and macdLBR > macdVal and allowBullDiv
+                    line.new(bar_index - lookbackRight, macdLBR, loc, macdVal, color=bullColor, width=divLineWidth, style=getLineStyle(divLineStyle))
+                    if show_div_on_price
+                        line.new(bar_index - lookbackRight, lowLBR, loc, priceVal, color=bullColor, width=divLineWidth, style=getLineStyle(divLineStyle), force_overlay=true)
+                    if bullDivCount == 0
+                        label.new(bar_index - lookbackRight, macdLBR, "Bull", color=bullColor, style=label.style_label_up, textcolor=textColor, size=size.small)
+                    bullCond := true, bullDivCount += 1
+                    if bullDivCount >= maxDivLines
+                        break
+    
+    bearCond := false, bearDivCount := 0
+    if calc_regular and not na(ph) and array.size(ph_positions) >= 2
+        for x = 1 to math.min(array.size(ph_positions) - 1, maxPivots - 1)
+            int loc = array.get(ph_positions, x), float macdVal = array.get(ph_macd_vals, x), float priceVal = array.get(ph_price_vals, x)
+            int len = bar_index - lookbackRight - loc
+            if len <= final_maxBarsBack and len >= final_rangeLower and len <= final_rangeUpper
+                // KALKAN ONAYI: allowBearDiv
+                if highLBR > priceVal and macdLBR < macdVal and allowBearDiv
+                    line.new(bar_index - lookbackRight, macdLBR, loc, macdVal, color=bearColor, width=divLineWidth, style=getLineStyle(divLineStyle))
+                    if show_div_on_price
+                        line.new(bar_index - lookbackRight, highLBR, loc, priceVal, color=bearColor, width=divLineWidth, style=getLineStyle(divLineStyle), force_overlay=true)
+                    if bearDivCount == 0
+                        label.new(bar_index - lookbackRight, macdLBR, "Bear", color=bearColor, style=label.style_label_down, textcolor=textColor, size=size.small)
+                    bearCond := true, bearDivCount += 1
+                    if bearDivCount >= maxDivLines
+                        break
+    
+    // --- HIDDEN (GİZLİ) UYUMSUZLUKLAR ---
+    hiddenBullCond := false, hiddenBullDivCount := 0
+    if calc_hidden and not na(pl) and array.size(pl_positions) >= 2
+        for x = 1 to math.min(array.size(pl_positions) - 1, maxPivots - 1)
+            int loc = array.get(pl_positions, x), float macdVal = array.get(pl_macd_vals, x), float priceVal = array.get(pl_price_vals, x)
+            int len = bar_index - lookbackRight - loc
+            if len <= final_maxBarsBack and len >= final_rangeLower and len <= final_rangeUpper
+                // KALKAN ONAYI: allowBullDiv
+                if lowLBR > priceVal and macdLBR < macdVal and allowBullDiv
+                    line.new(bar_index - lookbackRight, macdLBR, loc, macdVal, color=hiddenBullColor, width=divLineWidth, style=getLineStyle(divLineStyle))
+                    if show_div_on_price
+                        line.new(bar_index - lookbackRight, lowLBR, loc, priceVal, color=hiddenBullColor, width=divLineWidth, style=getLineStyle(divLineStyle), force_overlay=true)
+                    if hiddenBullDivCount == 0
+                        label.new(bar_index - lookbackRight, macdLBR, "H.Bull", color=hiddenBullColor, style=label.style_label_up, textcolor=textColor, size=size.small)
+                    hiddenBullCond := true, hiddenBullDivCount += 1
+                    if hiddenBullDivCount >= maxDivLines
+                        break
+    
+    hiddenBearCond := false, hiddenBearDivCount := 0
+    if calc_hidden and not na(ph) and array.size(ph_positions) >= 2
+        for x = 1 to math.min(array.size(ph_positions) - 1, maxPivots - 1)
+            int loc = array.get(ph_positions, x), float macdVal = array.get(ph_macd_vals, x), float priceVal = array.get(ph_price_vals, x)
+            int len = bar_index - lookbackRight - loc
+            if len <= final_maxBarsBack and len >= final_rangeLower and len <= final_rangeUpper
+                // KALKAN ONAYI: allowBearDiv
+                if highLBR < priceVal and macdLBR > macdVal and allowBearDiv
+                    line.new(bar_index - lookbackRight, macdLBR, loc, macdVal, color=hiddenBearColor, width=divLineWidth, style=getLineStyle(divLineStyle))
+                    if show_div_on_price
+                        line.new(bar_index - lookbackRight, highLBR, loc, priceVal, color=hiddenBearColor, width=divLineWidth, style=getLineStyle(divLineStyle), force_overlay=true)
+                    if hiddenBearDivCount == 0
+                        label.new(bar_index - lookbackRight, macdLBR, "H.Bear", color=hiddenBearColor, style=label.style_label_down, textcolor=textColor, size=size.small)
+                    hiddenBearCond := true, hiddenBearDivCount += 1
+                    if hiddenBearDivCount >= maxDivLines
+                        break
+
+// =============================================================================
+// 🎨 GÖRSEL AYARLAR & ÇİZİMLER
+// =============================================================================
+grp_visual = "🎨 GÖRSEL AYARLAR"
+col_macd = input.color(#2962FF, "MACD Çizgisi Rengi", group=grp_visual)
+col_signal = input.color(color.rgb(255, 116, 35), "Signal Çizgisi Rengi", group=grp_visual)
+show_histogram = input.bool(true, "Histogram Göster", group=grp_visual, tooltip="📊 MACD - Signal farkını histogram olarak gösterir.")
+show_cross_markers = input.bool(true, "Kesişim İşaretleri Göster", group=grp_visual, tooltip="🎯 MACD ve Signal kesişim noktalarını işaretler (AL/SAT).")
+
+// =============================================================================
+// 🧮 STRATEGY AYARLARI
+// =============================================================================
+grp_strategy = "🧮 STRATEGY AYARLARI"
+use_long = input.bool(true, "Long Sinyallerini Kullan", group=grp_strategy)
+use_short = input.bool(false, "Short Sinyallerini Kullan", group=grp_strategy)
+entry_mode = input.string("MACD + MTF Filtre", "Giriş Modu", options=["Süper Sinyaller", "MACD Kesişim", "MACD + MTF Filtre"], group=grp_strategy)
+exit_mode = input.string("Karşı Sinyal", "Çıkış Modu", options=["Karşı Sinyal", "MTF Zayıflama", "Hem Kesişim Hem MTF"], group=grp_strategy)
+
+hline(0, "Zero Line", color=color.new(#787B86, 50))
+plot(show_histogram ? hist : na, title="Histogram", style=plot.style_columns, color=(hist >= 0 ? (hist[1] < hist ? #26A69A : #B2DFDB) : (hist[1] < hist ? #FFCDD2 : #FF5252)))
+plot(macd, title="MACD", color=col_macd, linewidth=2)
+plot(signal, title="Signal", color=col_signal, linewidth=2)
+plotchar(show_cross_markers and bullish_cross ? macd : na, char='●', location=location.absolute, color=#92f87e, size=size.tiny, title="Bullish Cross")
+plotchar(show_cross_markers and bearish_cross ? macd : na, char='●', location=location.absolute, color=#ff6666, size=size.tiny, title="Bearish Cross")
+
+// =============================================================================
+// 📊 MTF MATRIX AYARLARI
+// =============================================================================
+grp_mtf = '📊 MTF MATRIX + FISILTI MODU'
+showMtfTable = input.bool(true, 'MTF Tablosunu Göster', group=grp_mtf, tooltip="📊 Çoklu Zaman Dilimi (MTF) analiz tablosunu ekranda gösterir.")
+mtfPos = input.string('Top Right', 'Konum', options=['Top Right', 'Bottom Right', 'Top Left', 'Bottom Left', 'Middle Right'], group=grp_mtf, tooltip="📍 Tablonun ekrandaki konumu.")
+mtfSize = input.string('Small', 'Boyut', options=['Tiny', 'Small', 'Normal'], group=grp_mtf, tooltip="📏 Tablo boyutu. 'Small' önerilir.")
+fisiltiSize = input.string('Normal', 'Fısıltı Mesajı Boyutu', options=['Tiny', 'Small', 'Normal', 'Large'], group=grp_mtf, tooltip="💬 Üstteki fısıltı (yorum) mesajının yazı boyutu.")
+mtfTransparency = input.int(60, 'Şeffaflık', minval=0, maxval=100, group=grp_mtf, tooltip="👻 Tablonun arka plan şeffaflığı. 60 önerilir.")
+show_period_info = input.bool(true, "Period Bilgisini Göster", group=grp_mtf, tooltip="📊 Tabloda kullanılan Fast, Slow, Signal değerlerini gösterir.")
+show_adaptive_info = input.bool(true, "Adaptive Bilgisini Göster", group=grp_mtf, tooltip="🧠 Volatilite, Hacim, Trend durumunu ikonlarla gösterir.")
+show_divergence_info = input.bool(true, "Divergence Bilgisini Göster", group=grp_mtf, tooltip="🔍 Tespit edilen uyumsuzluk (divergence) türünü gösterir.")
+
+tf1 = input.timeframe('15',  'Periyot 1 (Tetik)', group=grp_mtf, tooltip="⚡ Kısa vadeli timeframe. Giriş-çıkış zamanlaması için (Örn: 15m).")
+tf2 = input.timeframe('60',  'Periyot 2 (Teyit)', group=grp_mtf, tooltip="⚖️ Orta vadeli timeframe. Kısa vadeyi teyit eder (Örn: 1H).")
+tf3 = input.timeframe('240', 'Periyot 3 (Trend)', group=grp_mtf, tooltip="🌊 Uzun vadeli timeframe. Ana trend yönünü belirler (Örn: 4H).")
+tf4 = input.timeframe('D',   'Periyot 4 (İklim)', group=grp_mtf, tooltip="🌍 Çok uzun vadeli timeframe. Genel piyasa iklimi (Örn: 1D).")
+
+// =============================================================================
+// 🎯 TKE KURAL 1: TF'YE GÖRE SABİT (SIMPLE) PERİYOT DÖNDÜREN TABLO
+// =============================================================================
+f_get_tf_base_periods(simple string tf) =>
+    simple int f = 12
+    simple int s = 26
+    simple int sig = 9
+    if tf == "1" or tf == "3" or tf == "5" or tf == "15"
+        f := 12, s := 26, sig := 9
+    else if tf == "30" or tf == "45" or tf == "60"
+        f := 16, s := 34, sig := 12
+    else if tf == "120" or tf == "180" or tf == "240"
+        f := 20, s := 40, sig := 15
+    else if tf == "D" or tf == "W" or tf == "M"
+        f := 12, s := 26, sig := 9
+    [f, s, sig]
+
+// =============================================================================
+// 🧠 TKE KURAL 1.5: İZOLE EDİLMİŞ MTF HESAPLAMA FONKSİYONU
+// =============================================================================
+f_calc_macd_mtf(simple int b_fast, simple int b_slow, simple int b_sig) =>
+    float v_mult = 1.0
+    float volm_mult = 1.0
+    float t_mult = 1.0
+    float r_mult = 1.0
+    
+    if adaptive_mode == "Otomatik (Adaptif)"
+        if adaptive_level == "Basit (Vol + Hacim)" or adaptive_level == "Tam (Vol + Hacim + Trend + Rejim)"
+            v_mult := f_get_volatility_multiplier(atr_length, atr_sma_length, vol_sensitivity)
+            volm_mult := f_get_volume_multiplier(volume_sma_length, volume_sensitivity)
+        if adaptive_level == "Tam (Vol + Hacim + Trend + Rejim)"
+            t_mult := f_get_trend_strength_multiplier(adx_length)
+            r_mult := f_get_market_regime_multiplier()
+            
+    float c_mult = v_mult * volm_mult * t_mult * r_mult
+    int a_fast = math.round(b_fast * c_mult)
+    int a_slow = math.round(b_slow * c_mult)
+    int a_sig = math.round(b_sig * c_mult)
+    
+    a_fast := math.max(min_fast, math.min(a_fast, max_fast))
+    a_slow := math.max(min_slow, math.min(a_slow, max_slow))
+    a_sig := math.max(min_signal, math.min(a_sig, max_signal))
+    
+    if a_slow <= a_fast
+        a_slow := a_fast + 5
+    if a_sig > a_slow / 2
+        a_sig := int(a_slow / 2)
+        
+    int curr_fast = adaptive_mode == "Manuel (Sabit Değerler)" ? macdFast : a_fast
+    int curr_slow = adaptive_mode == "Manuel (Sabit Değerler)" ? macdSlow : a_slow
+    int curr_sig = adaptive_mode == "Manuel (Sabit Değerler)" ? macdSignal : a_sig
+    
+    // MTF için saf close kullanıyoruz (src kaymalarını önlemek için)
+    float f_ma = sma_source == "SMA" ? f_sma(close, curr_fast) : f_ema(close, curr_fast)
+    float s_ma = sma_source == "SMA" ? f_sma(close, curr_slow) : f_ema(close, curr_slow)
+    float m = f_ma - s_ma
+    float s = sma_signal == "SMA" ? f_sma(m, curr_sig) : f_ema(m, curr_sig)
+    float h = m - s
+    
+    bool m_up = m > m[1]
+    bool s_up = s > s[1]
+    bool h_up = h > h[1]
+    
+    [m, s, h, m_up, s_up, h_up]
+
+// =============================================================================
+// 🧱 TKE KURAL 2 & 3: DIŞARIDA HESAPLAMA VE DİNAMİK LOOKAHEAD
+// =============================================================================
+
+// Base periyotları dışarıda hesapla (Simple Int)
+[_bf1, _bs1, _bsig1] = f_get_tf_base_periods(tf1)
+[_bf2, _bs2, _bsig2] = f_get_tf_base_periods(tf2)
+[_bf3, _bs3, _bsig3] = f_get_tf_base_periods(tf3)
+[_bf4, _bs4, _bsig4] = f_get_tf_base_periods(tf4)
+
+// Dinamik Lookahead Kontrolü
+bool _tf1_bigger = timeframe.in_seconds(tf1) > timeframe.in_seconds()
+bool _tf2_bigger = timeframe.in_seconds(tf2) > timeframe.in_seconds()
+bool _tf3_bigger = timeframe.in_seconds(tf3) > timeframe.in_seconds()
+bool _tf4_bigger = timeframe.in_seconds(tf4) > timeframe.in_seconds()
+
+// Her TF için ayrı request.security
+[macd1, signal1, hist1, macd1_up, signal1_up, hist1_up] = request.security(syminfo.tickerid, tf1, f_calc_macd_mtf(_bf1, _bs1, _bsig1), lookahead = _tf1_bigger ? barmerge.lookahead_on : barmerge.lookahead_off, gaps = barmerge.gaps_off)
+[macd2, signal2, hist2, macd2_up, signal2_up, hist2_up] = request.security(syminfo.tickerid, tf2, f_calc_macd_mtf(_bf2, _bs2, _bsig2), lookahead = _tf2_bigger ? barmerge.lookahead_on : barmerge.lookahead_off, gaps = barmerge.gaps_off)
+[macd3, signal3, hist3, macd3_up, signal3_up, hist3_up] = request.security(syminfo.tickerid, tf3, f_calc_macd_mtf(_bf3, _bs3, _bsig3), lookahead = _tf3_bigger ? barmerge.lookahead_on : barmerge.lookahead_off, gaps = barmerge.gaps_off)
+[macd4, signal4, hist4, macd4_up, signal4_up, hist4_up] = request.security(syminfo.tickerid, tf4, f_calc_macd_mtf(_bf4, _bs4, _bsig4), lookahead = _tf4_bigger ? barmerge.lookahead_on : barmerge.lookahead_off, gaps = barmerge.gaps_off)
+
+macd1_above = macd1 > signal1
+macd2_above = macd2 > signal2
+macd3_above = macd3 > signal3
+macd4_above = macd4 > signal4
+
+// Fiyattan Bağımsız Dinamik Histogram Bölge Tespiti
+hist1_zone = hist1 > 0 ? (hist1_up ? 2 : 1) : (hist1_up ? -1 : -2)
+hist2_zone = hist2 > 0 ? (hist2_up ? 2 : 1) : (hist2_up ? -1 : -2)
+hist3_zone = hist3 > 0 ? (hist3_up ? 2 : 1) : (hist3_up ? -1 : -2)
+hist4_zone = hist4 > 0 ? (hist4_up ? 2 : 1) : (hist4_up ? -1 : -2)
+
+// =============================================================================
+// 🗣️ FISILTI MODU - 8 SENARYO
+// =============================================================================
+calc_power(macdAbove, macdUp, signalUp, histZone) =>
+    int score = 0
+    score += macdAbove ? 1 : -1
+    score += macdUp ? 1 : 0
+    score += signalUp ? 1 : 0
+    score += histZone > 0 ? 1 : histZone < 0 ? -1 : 0
+    score
+
+int power1 = calc_power(macd1_above, macd1_up, signal1_up, hist1_zone)
+int power2 = calc_power(macd2_above, macd2_up, signal2_up, hist2_zone)
+int power3 = calc_power(macd3_above, macd3_up, signal3_up, hist3_zone)
+int power4 = calc_power(macd4_above, macd4_up, signal4_up, hist4_zone)
+
+string fisilti_msg = ""
+color fisilti_color = color.gray
+string fisilti_icon = ""
+
+if power1 >= 2 and power2 >= 2 and power3 >= 2 and power4 >= 2
+    fisilti_msg := "🚀🚀 SÜPER RALLİ: TAM GAZ!"
+    fisilti_color := color.new(#00ff00, 0), fisilti_icon := "🚀🚀"
+else if power3 >= 2 and power4 >= 2 and (power1 >= 1 or power2 >= 1)
+    fisilti_msg := "🚀 RALLİ MODU: TAM GAZ!"
+    fisilti_color := color.new(#26a69a, 0), fisilti_icon := "🚀"
+else if power3 >= 2 and power4 >= 2 and power1 <= -1
+    fisilti_msg := "💎 ALTIN VURUŞ: Süper fırsat!"
+    fisilti_color := color.new(#ffd700, 0), fisilti_icon := "💎"
+else if power4 >= 3 and power1 <= -2
+    fisilti_msg := "🎯 DÜZELTME: Agresif al!"
+    fisilti_color := color.new(#00bcd4, 0), fisilti_icon := "🎯"
+else if (power1 >= 2 and power4 <= -1) or (power4 >= 2 and power1 <= -1)
+    fisilti_msg := "⚠️ KARIŞIK SİNYAL: Dikkatli al"
+    fisilti_color := color.new(#ff9800, 0), fisilti_icon := "⚠️"
+else if power4 <= -2 and power1 >= 2
+    fisilti_msg := "⚡ TEPKİ YÜKSELİŞİ: Vur-kaç!"
+    fisilti_color := color.new(#ffeb3b, 0), fisilti_icon := "⚡"
+else if power1 <= -2 and power2 <= -2 and power3 <= -2 and power4 <= -2
+    fisilti_msg := "🩸 BIÇAK DÜŞÜYOR: NAKİT KAL!"
+    fisilti_color := color.new(#ff0000, 0), fisilti_icon := "🩸"
+else
+    fisilti_msg := "👀 KARARSIZ: Bekle..."
+    fisilti_color := color.new(#9e9e9e, 0), fisilti_icon := "👀"
+
+// =============================================================================
+// 📊 MTF MATRIX TABLOSU (Optimize Edildi)
+// =============================================================================
+var table mtfTable = na
+
+if showMtfTable
+    int total_rows = 6
+    if show_period_info
+        total_rows += 1
+    if show_adaptive_info and adaptive_mode == "Otomatik (Adaptif)" and (adaptive_level == "Basit (Vol + Hacim)" or adaptive_level == "Tam (Vol + Hacim + Trend + Rejim)")
+        total_rows += 1
+        if adaptive_level == "Tam (Vol + Hacim + Trend + Rejim)"
+            total_rows += 1
+    if show_divergence_info and calculateDivergence
+        total_rows += 1
+
+    if na(mtfTable)
+        tablePos = mtfPos == 'Top Right' ? position.top_right : mtfPos == 'Bottom Right' ? position.bottom_right : mtfPos == 'Top Left' ? position.top_left : mtfPos == 'Bottom Left' ? position.middle_right : position.middle_right
+        mtfTable := table.new(tablePos, 5, total_rows, border_width=1)
+    
+    mts = mtfSize == 'Tiny' ? size.tiny : mtfSize == 'Small' ? size.small : size.normal
+    fts = fisiltiSize == 'Tiny' ? size.tiny : fisiltiSize == 'Small' ? size.small : fisiltiSize == 'Normal' ? size.normal : size.large
+    
+    table.cell(mtfTable, 0, 0, fisilti_icon, text_color=color.white, text_size=fts, bgcolor=color.new(fisilti_color, mtfTransparency))
+    table.cell(mtfTable, 1, 0, fisilti_msg, text_color=color.white, text_size=fts, bgcolor=color.new(fisilti_color, mtfTransparency))
+    table.merge_cells(mtfTable, 1, 0, 4, 0)
+
+    int row = 1
+    if show_period_info    
+        string mode_text = adaptive_mode == "Manuel (Sabit Değerler)" ? "MANUAL" : adaptive_level == "Sadece Timeframe" ? "TF" : adaptive_level == "Basit (Vol + Hacim)" ? "BASIT" : "TAM"
+        table.cell(mtfTable, 0, row, "Period", text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+        table.cell(mtfTable, 1, row, "F:" + str.tostring(fast_length), text_color=color.yellow, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+        table.cell(mtfTable, 2, row, "S:" + str.tostring(slow_length), text_color=color.orange, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+        table.cell(mtfTable, 3, row, "Sig:" + str.tostring(signal_length), text_color=color.aqua, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+        table.cell(mtfTable, 4, row, mode_text, text_color=adaptive_mode == "Otomatik (Adaptif)" ? color.lime : color.orange, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+        row += 1
+    
+    if show_adaptive_info and adaptive_mode == "Otomatik (Adaptif)" and (adaptive_level == "Basit (Vol + Hacim)" or adaptive_level == "Tam (Vol + Hacim + Trend + Rejim)")
+        float atr_current = ta.atr(atr_length)
+        float atr_avg = ta.sma(ta.atr(atr_length), atr_sma_length)
+        float vol_ratio = atr_current / atr_avg
+        string vol_icon = vol_ratio > 1.5 ? "🔥" : vol_ratio > 1.2 ? "⬆️" : vol_ratio > 0.8 ? "➡️" : vol_ratio > 0.5 ? "⬇️" : "❄️"
+        
+        float vol_current = volume
+        float vol_avg = ta.sma(volume, volume_sma_length)
+        float volume_ratio = vol_current / vol_avg
+        string volume_icon = volume_ratio > 2.0 ? "📊🔥" : volume_ratio > 1.5 ? "📊⬆️" : volume_ratio > 0.7 ? "📊➡️" : volume_ratio > 0.4 ? "📊⬇️" : "📊❄️"
+        
+        table.cell(mtfTable, 0, row, "Durum", text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+        table.cell(mtfTable, 1, row, "Vol:" + vol_icon, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+        table.cell(mtfTable, 2, row, volume_icon, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+        table.cell(mtfTable, 3, row, "×" + str.tostring(combined_mult, "#.##"), text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+        table.merge_cells(mtfTable, 3, row, 4, row)
+        row += 1
+        
+        if adaptive_level == "Tam (Vol + Hacim + Trend + Rejim)"
+            [diPlus, diMinus, adx_value] = ta.dmi(adx_length, adx_length)
+            string adx_icon = adx_value > 40 ? "⬆️⬆️" : adx_value > 25 ? "⬆️" : adx_value > 20 ? "➡️" : adx_value > 15 ? "⬇️" : "⬇️⬇️"
+            float ema_200 = ta.ema(close, 200), float ema_50 = ta.ema(close, 50)
+            string regime_icon = close > ema_200 and ema_50 > ema_200 ? "🐂" : close < ema_200 and ema_50 < ema_200 ? "🐻" : "⚖️"
+            string regime_text = close > ema_200 and ema_50 > ema_200 ? "Bull" : close < ema_200 and ema_50 < ema_200 ? "Bear" : "Side"
+            
+            table.cell(mtfTable, 0, row, "Trend", text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+            table.cell(mtfTable, 1, row, "ADX:" + adx_icon, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+            table.cell(mtfTable, 2, row, "Rejim:" + regime_icon, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+            table.cell(mtfTable, 3, row, regime_text, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+            table.merge_cells(mtfTable, 3, row, 4, row)
+            row += 1
+    
+    if show_divergence_info and calculateDivergence
+        string div_text = bullCond ? "🟢 REG BULL" : bearCond ? "🔴 REG BEAR" : hiddenBullCond ? "🟢 HID BULL" : hiddenBearCond ? "🔴 HID BEAR" : "➖ YOK"
+        color div_bg = bullCond ? bullColor : bearCond ? bearColor : hiddenBullCond ? hiddenBullColor : hiddenBearCond ? hiddenBearColor : color.gray
+        
+        table.cell(mtfTable, 0, row, "Div", text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+        table.cell(mtfTable, 1, row, div_text, text_color=color.white, text_size=mts, bgcolor=color.new(div_bg, mtfTransparency))
+        table.cell(mtfTable, 2, row, "Lines:" + str.tostring(maxDivLines), text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+        table.cell(mtfTable, 3, row, "Mem:" + str.tostring(maxPivots), text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+        table.merge_cells(mtfTable, 3, row, 4, row)
+        row += 1
+    
+    table.cell(mtfTable, 0, row, "TF", text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 1, row, "Hist", text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 2, row, "MACD", text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 3, row, "Sig", text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 4, row, "Bölge", text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    row += 1
+    
+    // TF1 Satırı
+    string tf1_hist_arrow = hist1_up ? "⬆" : "⬇", string tf1_macd_arrow = macd1_up ? "⬆" : "⬇", string tf1_signal_arrow = signal1_up ? "⬆" : "⬇", string tf1_zone = hist1_zone == 2 ? "🔥" : hist1_zone == 1 ? "🚀" : hist1_zone == -1 ? "🐋" : "💀"
+    color c_hist1 = hist1_zone == 2 ? #26A69A : hist1_zone == 1 ? #B2DFDB : hist1_zone == -1 ? #FFCDD2 : #FF5252
+    table.cell(mtfTable, 0, row, tf1, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 1, row, str.tostring(hist1, "#.##") + " " + tf1_hist_arrow, text_color=c_hist1, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 2, row, str.tostring(macd1, "#.##") + " " + tf1_macd_arrow, text_color=macd1_up ? color.lime : color.red, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 3, row, str.tostring(signal1, "#.##") + " " + tf1_signal_arrow, text_color=signal1_up ? color.lime : color.red, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 4, row, tf1_zone, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    row += 1
+    
+    // TF2 Satırı
+    string tf2_hist_arrow = hist2_up ? "⬆" : "⬇", string tf2_macd_arrow = macd2_up ? "⬆" : "⬇", string tf2_signal_arrow = signal2_up ? "⬆" : "⬇", string tf2_zone = hist2_zone == 2 ? "🔥" : hist2_zone == 1 ? "🚀" : hist2_zone == -1 ? "🐋" : "💀"
+    color c_hist2 = hist2_zone == 2 ? #26A69A : hist2_zone == 1 ? #B2DFDB : hist2_zone == -1 ? #FFCDD2 : #FF5252
+    table.cell(mtfTable, 0, row, tf2, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 1, row, str.tostring(hist2, "#.##") + " " + tf2_hist_arrow, text_color=c_hist2, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 2, row, str.tostring(macd2, "#.##") + " " + tf2_macd_arrow, text_color=macd2_up ? color.lime : color.red, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 3, row, str.tostring(signal2, "#.##") + " " + tf2_signal_arrow, text_color=signal2_up ? color.lime : color.red, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 4, row, tf2_zone, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    row += 1
+    
+    // TF3 Satırı
+    string tf3_hist_arrow = hist3_up ? "⬆" : "⬇", string tf3_macd_arrow = macd3_up ? "⬆" : "⬇", string tf3_signal_arrow = signal3_up ? "⬆" : "⬇", string tf3_zone = hist3_zone == 2 ? "🔥" : hist3_zone == 1 ? "🚀" : hist3_zone == -1 ? "🐋" : "💀"
+    color c_hist3 = hist3_zone == 2 ? #26A69A : hist3_zone == 1 ? #B2DFDB : hist3_zone == -1 ? #FFCDD2 : #FF5252
+    table.cell(mtfTable, 0, row, tf3, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 1, row, str.tostring(hist3, "#.##") + " " + tf3_hist_arrow, text_color=c_hist3, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 2, row, str.tostring(macd3, "#.##") + " " + tf3_macd_arrow, text_color=macd3_up ? color.lime : color.red, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 3, row, str.tostring(signal3, "#.##") + " " + tf3_signal_arrow, text_color=signal3_up ? color.lime : color.red, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 4, row, tf3_zone, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    row += 1
+    
+    // TF4 Satırı
+    string tf4_hist_arrow = hist4_up ? "⬆" : "⬇", string tf4_macd_arrow = macd4_up ? "⬆" : "⬇", string tf4_signal_arrow = signal4_up ? "⬆" : "⬇", string tf4_zone = hist4_zone == 2 ? "🔥" : hist4_zone == 1 ? "🚀" : hist4_zone == -1 ? "🐋" : "💀"
+    color c_hist4 = hist4_zone == 2 ? #26A69A : hist4_zone == 1 ? #B2DFDB : hist4_zone == -1 ? #FFCDD2 : #FF5252
+    table.cell(mtfTable, 0, row, tf4, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 1, row, str.tostring(hist4, "#.##") + " " + tf4_hist_arrow, text_color=c_hist4, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 2, row, str.tostring(macd4, "#.##") + " " + tf4_macd_arrow, text_color=macd4_up ? color.lime : color.red, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 3, row, str.tostring(signal4, "#.##") + " " + tf4_signal_arrow, text_color=signal4_up ? color.lime : color.red, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+    table.cell(mtfTable, 4, row, tf4_zone, text_color=color.white, text_size=mts, bgcolor=color.new(color.gray, mtfTransparency))
+
+// =============================================================================
+// 🕵️ SCREENER FİLTRELERİ & ALARMLAR
+// =============================================================================
+bool scr_super_ralli = power1 >= 2 and power2 >= 2 and power3 >= 2 and power4 >= 2
+bool scr_ralli = power3 >= 2 and power4 >= 2 and (power1 >= 1 or power2 >= 1)
+bool scr_altin_vurus = power3 >= 2 and power4 >= 2 and power1 <= -1
+bool scr_duzeltme = power4 >= 3 and power1 <= -2
+bool scr_karisik = (power1 >= 2 and power4 <= -1) or (power4 >= 2 and power1 <= -1)
+bool scr_tepki = power4 <= -2 and power1 >= 2
+bool scr_bicak = power1 <= -2 and power2 <= -2 and power3 <= -2 and power4 <= -2
+bool scr_kararsiz = not scr_super_ralli and not scr_ralli and not scr_altin_vurus and not scr_duzeltme and not scr_karisik and not scr_tepki and not scr_bicak
+
+plot(macd > signal ? 1 : 0, title="SCR: MACD > Signal", display=display.data_window)
+plot(macd < signal ? 1 : 0, title="SCR: MACD < Signal", display=display.data_window)
+plot(bullish_cross ? 1 : 0, title="SCR: MACD Yukarı Kesti Signal", display=display.data_window)
+plot(bearish_cross ? 1 : 0, title="SCR: MACD Aşağı Kesti Signal", display=display.data_window)
+plot(hist > 0 ? 1 : 0, title="SCR: Histogram > 0", display=display.data_window)
+plot(hist < 0 ? 1 : 0, title="SCR: Histogram < 0", display=display.data_window)
+plot(macd_up_global ? 1 : 0, title="SCR: MACD Yükseliyor", display=display.data_window)
+plot(not macd_up_global ? 1 : 0, title="SCR: MACD Düşüyor", display=display.data_window)
+
+plot(bullCond ? 1 : 0, title="SCR: Regular Bullish Div", display=display.data_window)
+plot(bearCond ? 1 : 0, title="SCR: Regular Bearish Div", display=display.data_window)
+plot(hiddenBullCond ? 1 : 0, title="SCR: Hidden Bullish Div", display=display.data_window)
+plot(hiddenBearCond ? 1 : 0, title="SCR: Hidden Bearish Div", display=display.data_window)
+
+plot(scr_super_ralli ? 1 : 0, title="SCR: 🚀🚀 SÜPER RALLİ", display=display.data_window)
+plot(scr_ralli ? 1 : 0, title="SCR: 🚀 RALLİ MODU", display=display.data_window)
+plot(scr_altin_vurus ? 1 : 0, title="SCR: 💎 ALTIN VURUŞ", display=display.data_window)
+plot(scr_duzeltme ? 1 : 0, title="SCR: 🎯 DÜZELTME", display=display.data_window)
+plot(scr_karisik ? 1 : 0, title="SCR: ⚠️ KARIŞIK SİNYAL", display=display.data_window)
+plot(scr_tepki ? 1 : 0, title="SCR: ⚡ TEPKİ YÜKSELİŞİ", display=display.data_window)
+plot(scr_bicak ? 1 : 0, title="SCR: 🩸 BIÇAK DÜŞÜYOR", display=display.data_window)
+plot(scr_kararsiz ? 1 : 0, title="SCR: 👀 KARARSIZ", display=display.data_window)
+
+plot(bullCond and scr_ralli ? 1 : 0, title="SCR: 🏆 SÜPER AL (Div + Ralli)", display=display.data_window)
+plot(bearCond and scr_bicak ? 1 : 0, title="SCR: 🏆 SÜPER SAT (Div + Bıçak)", display=display.data_window)
+plot(bullCond and scr_duzeltme ? 1 : 0, title="SCR: 💎 ALTIN VURUŞ (Div + Düzeltme)", display=display.data_window)
+plot(hiddenBullCond and scr_ralli ? 1 : 0, title="SCR: 🚀 TREND DEVAM (Hidden + Ralli)", display=display.data_window)
+
+plot(macd1_above and macd2_above ? 1 : 0, title="SCR: MTF Kısa+Orta Pozitif", display=display.data_window)
+plot(macd3_above and macd4_above ? 1 : 0, title="SCR: MTF Uzun+Günlük Pozitif", display=display.data_window)
+plot(macd1_above and macd2_above and macd3_above and macd4_above ? 1 : 0, title="SCR: MTF Tüm TF Pozitif", display=display.data_window)
+
+// =============================================================================
+// 🧮 STRATEGY İŞLEMLERİ
+// =============================================================================
+bool inLong = strategy.position_size > 0
+bool inShort = strategy.position_size < 0
+
+bool longEntry = entry_mode == "Süper Sinyaller" ? (bullCond and scr_ralli) :
+                 entry_mode == "MACD Kesişim" ? bullish_cross :
+                 (bullish_cross and (scr_ralli or scr_super_ralli or scr_altin_vurus or scr_duzeltme))
+bool shortEntry = entry_mode == "Süper Sinyaller" ? (bearCond and scr_bicak) :
+                  entry_mode == "MACD Kesişim" ? bearish_cross :
+                  (bearish_cross and (scr_bicak or scr_tepki))
+
+bool longExit = exit_mode == "Karşı Sinyal" ? bearish_cross :
+                exit_mode == "MTF Zayıflama" ? (scr_bicak or scr_karisik or scr_tepki) :
+                (bearish_cross or scr_bicak or scr_karisik or scr_tepki)
+bool shortExit = exit_mode == "Karşı Sinyal" ? bullish_cross :
+                 exit_mode == "MTF Zayıflama" ? (scr_super_ralli or scr_ralli or scr_altin_vurus or scr_duzeltme or scr_karisik or scr_tepki) :
+                 (bullish_cross or scr_super_ralli or scr_ralli or scr_altin_vurus or scr_duzeltme or scr_karisik or scr_tepki)
+
+if inLong and longExit
+    strategy.close("Long", comment="Long Çık")
+if inShort and shortExit
+    strategy.close("Short", comment="Short Çık")
+
+if use_long and not inLong and longEntry
+    strategy.close("Short", comment="Short Çık")
+    strategy.entry("Long", strategy.long, comment="Long Giriş")
+else if use_short and not inShort and shortEntry
+    strategy.close("Long", comment="Long Çık")
+    strategy.entry("Short", strategy.short, comment="Short Giriş")
+
+// =============================================================================
+// 🔔 ALARMLAR
+// =============================================================================
+// alertcondition(bullish_cross, title='🟢 MACD Yukarı Kesti Signal', message="🟢 AL SİNYALİ!\n{{ticker}}\nMACD yukarı kesti Signal'i\nFiyat: {{close}}")
+// alertcondition(bearish_cross, title='🔴 MACD Aşağı Kesti Signal', message="🔴 SAT SİNYALİ!\n{{ticker}}\nMACD aşağı kesti Signal'i\nFiyat: {{close}}")
+
+// alertcondition(bullCond, title='🟢 Regular Bullish Divergence', message="🟢 BULLISH DIVERGENCE!\n{{ticker}}\nRegular Bullish Divergence tespit edildi\nFiyat: {{close}}")
+// alertcondition(bearCond, title='🔴 Regular Bearish Divergence', message="🔴 BEARISH DIVERGENCE!\n{{ticker}}\nRegular Bearish Divergence tespit edildi\nFiyat: {{close}}")
+// alertcondition(hiddenBullCond, title='🟢 Hidden Bullish Divergence', message="🟢 HIDDEN BULLISH!\n{{ticker}}\nHidden Bullish Divergence (Trend devamı)\nFiyat: {{close}}")
+// alertcondition(hiddenBearCond, title='🔴 Hidden Bearish Divergence', message="🔴 HIDDEN BEARISH!\n{{ticker}}\nHidden Bearish Divergence (Trend devamı)\nFiyat: {{close}}")
+
+// alertcondition(scr_super_ralli, title='🚀🚀 SÜPER RALLİ', message="🚀🚀 SÜPER RALLİ!\n{{ticker}}\nTüm timeframe'ler çok güçlü!\nFiyat: {{close}}")
+// alertcondition(scr_ralli, title='🚀 RALLİ MODU', message="🚀 RALLİ MODU!\n{{ticker}}\nBüyük timeframe'ler güçlü!\nFiyat: {{close}}")
+// alertcondition(scr_altin_vurus, title='💎 ALTIN VURUŞ', message="💎 ALTIN VURUŞ!\n{{ticker}}\nBüyük TF güçlü, kısa vade düşüş - SÜPER FIRSAT!\nFiyat: {{close}}")
+// alertcondition(scr_duzeltme, title='🎯 DÜZELTME', message="🎯 DÜZELTME!\n{{ticker}}\nSüper trend, kısa vade düşüş - AGRESİF AL!\nFiyat: {{close}}")
+// alertcondition(scr_bicak, title='🩸 BIÇAK DÜŞÜYOR', message="🩸 BIÇAK DÜŞÜYOR!\n{{ticker}}\nTüm timeframe'ler zayıf - NAKİT KAL!\nFiyat: {{close}}")
+
+// Kombo alarmlar
+// alertcondition(bullCond and scr_ralli, title='🏆 SÜPER AL (Div + Ralli)', message="🏆 SÜPER AL SİNYALİ!\n{{ticker}}\n• Regular Bullish Divergence ✅\n• Ralli Modu Aktif ✅\nFiyat: {{close}}")
+// alertcondition(bearCond and scr_bicak, title='🏆 SÜPER SAT (Div + Bıçak)', message="🏆 SÜPER SAT SİNYALİ!\n{{ticker}}\n• Regular Bearish Divergence ✅\n• Bıçak Düşüyor ✅\nFiyat: {{close}}")
+// alertcondition(bullCond and scr_duzeltme, title='💎 ALTIN VURUŞ (Div + Düzeltme)', message="💎 ALTIN VURUŞ!\n{{ticker}}\n• Regular Bullish Divergence ✅\n• Düzeltme Fırsatı ✅\nFiyat: {{close}}")
+// alertcondition(hiddenBullCond and scr_ralli, title='🚀 TREND DEVAM (Hidden + Ralli)', message="🚀 TREND DEVAM!\n{{ticker}}\n• Hidden Bullish Divergence ✅\n• Ralli Modu Aktif ✅\nFiyat: {{close}}")

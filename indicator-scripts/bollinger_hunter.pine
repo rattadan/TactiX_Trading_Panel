@@ -1,0 +1,540 @@
+//@version=5
+indicator("⚡ Bollinger Hunter Pro v5.7", overlay=true)
+
+// ========================================================================================================
+// ⚡ BOLLINGER HUNTER PRO v5.7 (GELİŞMİŞ SIKIŞMA VE PATLAMA MOTORU)
+// ========================================================================================================
+// ⚙️ STRATEJİ MİMARI VE GELİŞTİRİCİ : @TTesviyeci (Twitter/X)
+// 🤖 KOD MATEMATİĞİ VE OPTİMİZASYON : Gemini 3.1 Pro
+// 📅 SÜRÜM / TARİH                  : v5.7 PRO (23.04.2026)
+// 🛡️ VİZYON                         : "Grafikteki en büyük fırtınalar, en derin sessizliklerin (daralmaların) içinden doğar."
+// ========================================================================================================
+
+// ============================================================================
+// 🧠 KODUN ZEKA SIRALAMASI (Önemli!) | LOGIC HIERARCHY (Important!)
+// ============================================================================
+// 🇹🇷 Bu İndikatörün bir "Rütbe Sıralaması" var. Eğer aynı anda hem "Ralli" hem 
+// "Uyumsuzluk" varsa, indikatör hangisini dinleyecek?
+// 🇬🇧 This indicator has a "Rank Order". If there is both a "Rally" and a 
+// "Divergence" at the same time, which one will the indicator listen to?
+
+// 🇹🇷 İşte Rütbe Sıralaması (Önem Sırası):
+// 🇬🇧 Here is the Rank Order (Priority):
+
+// 🥇 Uyumsuzluk (PU/NU) | Divergence (PD/ND): 
+// 🇹🇷 En büyük general budur. Varsa diğerleri susar.
+// 🇬🇧 This is the highest general. If present, others stay silent.
+
+// 🥈 Patlama | Breakout: 
+// 🇹🇷 Hareketin başlangıcı.
+// 🇬🇧 The start of the move.
+
+// 🥉 Ralli | Walking the Bands: 
+// 🇹🇷 Trendin devamı.
+// 🇬🇧 Trend continuation.
+
+// 🎖️ Orta Bant Kırılımı | Mid-Band Cross: 
+// 🇹🇷 Trendin güvenli dönüş sinyali.
+// 🇬🇧 Safe reversal signal of the trend.
+
+// 🏅 Formasyon (W/M) | Patterns: 
+// 🇹🇷 Dönüş sinyalleri.
+// 🇬🇧 Reversal signals.
+
+// 🎖️ Sıkışma | Squeeze: 
+// 🇹🇷 Bekleme modu.
+// 🇬🇧 Waiting mode.
+
+// 🇹🇷 Yani elindeki kod, rastgele renkler yakan bir boyama kitabı değil; 
+// hiyerarşisi olan, mantıklı karar veren bir yapay zeka gibi çalışıyor.
+// 🇬🇧 So, the code in your hands is not a coloring book flashing random colors; 
+// it works like an AI with a hierarchy, making logical decisions.
+
+// ============================================================================
+// 📘 STRATEJİ VE MANTIK | STRATEGY AND LOGIC 
+// (ARTHUR MERRILL & BOLLINGER ART OF WAR)
+// ============================================================================
+// 🇹🇷 BU İNDİKATÖR NE ARAR?
+// Fiyatın Bollinger Bantları ile olan "Uyumsuzluğunu" ve "Volatilite Karakterini" arar.
+// 🇬🇧 WHAT DOES THIS INDICATOR LOOK FOR?
+// It looks for the "Divergence" and "Volatility Character" of the price with the Bollinger Bands.
+
+// 1. 🟢 W FORMASYONU (İKİLİ DİP) | W PATTERN (DOUBLE BOTTOM):
+//    - 🇹🇷 1. Ayak: Fiyat sert düşer ve Alt Bandı DELER (Dışarı taşar).
+//    - 🇬🇧 1st Leg: Price drops sharply and PIERCES the Lower Band (Overflows outside).
+//    - 🇹🇷 Tepki: Fiyat tepki verir, bant içine girer ve orta banda yönelir.
+//    - 🇬🇧 Reaction: Price reacts, enters the band, and heads towards the middle band.
+//    - 🇹🇷 2. Ayak: Fiyat tekrar düşer (Dip yapar) ama bu sefer ALT BANDA DEĞMEZ.
+//    - 🇬🇧 2nd Leg: Price drops again (Makes a bottom) but this time DOES NOT TOUCH THE LOWER BAND.
+//    👉 ANLAMI/MEANING: "Satış baskısı bitti, dönüş başlıyor. | Selling pressure is over, reversal begins."
+
+// 2. 🔴 M FORMASYONU (İKİLİ TEPE) | M PATTERN (DOUBLE TOP):
+//    - 🇹🇷 1. Ayak: Fiyat sert yükselir ve Üst Bandı DELER (Dışarı taşar).
+//    - 🇬🇧 1st Leg: Price rises sharply and PIERCES the Upper Band (Overflows outside).
+//    - 🇹🇷 Düzeltme: Fiyat kar satışı yer, bant içine girer.
+//    - 🇬🇧 Correction: Price faces profit-taking, enters the band.
+//    - 🇹🇷 2. Ayak: Fiyat tekrar yükselir (Tepe yapar) ama bu sefer ÜST BANDA DEĞMEZ.
+//    - 🇬🇧 2nd Leg: Price rises again (Makes a top) but this time DOES NOT TOUCH THE UPPER BAND.
+//    👉 ANLAMI/MEANING: "Alış iştahı bitti, düşüş başlıyor. | Buying appetite is over, drop begins."
+
+// 3. 🚀 THE BREAKOUT & WALKING (RALLİ MODU | RALLY MODE):
+//    - 🇹🇷 Bantlar ağzını açar. Fiyat üst banda yapışır ve orada yürümeye başlar.
+//    - 🇬🇧 Bands open up. Price sticks to the upper band and starts walking there.
+//    👉 ANLAMI/MEANING: "Trend çok güçlü, tersine işlem açma! | Trend is very strong, don't trade against it!"
+
+// 4. ⏳ THE SQUEEZE (SIKIŞMA):
+//    - 🇹🇷 Bantlar iyice daralır. Fırtına öncesi sessizliktir.
+//    - 🇬🇧 Bands narrow significantly. It's the calm before the storm.
+//    👉 ANLAMI/MEANING: "Büyük bir patlama yaklaşıyor. | A big breakout is approaching."
+
+// 5. ⚠️ %B UYUMSUZLUĞU | %B DIVERGENCE (GİZLİ DÖNÜŞ | HIDDEN REVERSAL):
+//    - 🇹🇷 Negatif (Ayı): Fiyat YENİ TEPE yapar ama %B DAHA DÜŞÜK tepe yapar. (Çöküş Sinyali)
+//    - 🇬🇧 Negative (Bearish): Price makes a NEW TOP but %B makes a LOWER top. (Crash Signal)
+//    - 🇹🇷 Pozitif (Boğa): Fiyat YENİ DİP yapar ama %B DAHA YÜKSEK dip yapar. (Yükseliş Sinyali)
+//    - 🇬🇧 Positive (Bullish): Price makes a NEW BOTTOM but %B makes a HIGHER bottom. (Rise Signal)
+
+// 6. ⚡ ORTA BANT KIRILIMI | MID-BAND CROSS (GÜVENLİ LİMAN | SAFE HAVEN):
+//    - 🇹🇷 Fiyat MA20'yi (Orta Bant) aşağıdan yukarı keser.
+//    - 🇬🇧 Price crosses MA20 (Middle Band) from bottom to top.
+//    👉 ANLAMI/MEANING: "Ayı piyasası bitti, Boğa başlıyor. | Bear market is over, Bull is starting."
+
+// 7. ↩️ MEAN REVERSION (BANT İÇİ DÖNÜŞ | PULLBACK):
+//    - 🇹🇷 Fiyat banda sert bir kafa atar (iğne bırakır) ama kapanışı bant içinde yapar.
+//    - 🇬🇧 Price hits the band hard (leaves a wick) but closes inside the band.
+//    👉 ANLAMI/MEANING: "Fiyat çok şişti. Ortalamaya dönüş vakti. | Price is overextended. Time to revert to mean."
+
+// ============================================================================
+// ⚙️ AYARLAR VE ÇİFT DİL (BILINGUAL SETTINGS)
+// ============================================================================
+
+group_lang = "🌍 Dil Seçimi | Language"
+// @scale: length, sq_len, trend_len, leftBars, rightBars
+lang = input.string("Türkçe", "Dil | Language", options=["Türkçe", "English"], group=group_lang, tooltip="🇹🇷 Tablo ve grafik üzerindeki metinlerin dilini belirler.\n\n🇬🇧 Sets the language for the dashboard and chart labels.")
+is_tr = lang == "Türkçe"
+
+// --- GRUP 1: GÖRÜNÜM | APPEARANCE ---
+group_vis = "Görünüm & Tablo | Appearance & Table"
+
+dash_show = input.bool(
+     true, 
+     "Tabloyu Göster | Show Dashboard", 
+     group=group_vis, 
+     tooltip="🇹🇷 AÇIKLAMA: Bilgi tablosunu açıp kapatır.\n\n📌 TABLO İÇERİĞİ:\n• Piyasa Modu (Squeeze, Breakout, vb.)\n• Fısıltı (Strateji önerisi)\n• Bant Genişliği (Volatilite)\n\n🎯 OPTİMUM: Açık (kapatırsanız sadece grafik görünür)\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Toggles the information dashboard.\n\n📌 TABLE CONTENT:\n• Market Mode (Squeeze, Breakout, etc.)\n• Whisper (Strategy suggestion)\n• Band Width (Volatility)\n\n🎯 OPTIMUM: On (if closed, only the chart is visible)"
+ )
+
+dash_pos = input.string(
+     "Sağ Üst | Top Right", 
+     "Tablo Konumu | Table Position", 
+     options=["Sağ Üst | Top Right", "Sağ Alt | Bottom Right", "Sol Üst | Top Left", "Sol Alt | Bottom Left"], 
+     group=group_vis, 
+     tooltip="🇹🇷 AÇIKLAMA: Tablonun ekrandaki yerini belirler.\n🎯 OPTİMUM: Sağ Üst (en az yer kaplar)\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Determines the position of the table on the screen.\n🎯 OPTIMUM: Top Right (takes up the least space)"
+ )
+
+dash_size = input.string(
+     "Küçük | Small", 
+     "Tablo Boyutu | Table Size", 
+     options=["Küçük | Small", "Normal", "Büyük | Large"], 
+     group=group_vis, 
+     tooltip="🇹🇷 AÇIKLAMA: Tablodaki yazıların boyutunu ayarlar.\n\n🎯 OPTİMUM:\n• Mobil: Küçük\n• Masaüstü: Küçük/Normal\n• Büyük ekran: Büyük\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Adjusts the text size in the table.\n\n🎯 OPTIMUM:\n• Mobile: Small\n• Desktop: Small/Normal\n• Large screen: Large"
+ )
+
+use_barcol = input.bool(
+     true, 
+     "Mumları Boya | Color Bars", 
+     group=group_vis, 
+     tooltip="🇹🇷 AÇIKLAMA: Stratejiye göre mumların rengini değiştirir.\n\n📌 RENK KODLARI:\n• Yeşil: Ralli (Walking)\n• Lime: Patlama (Breakout)\n• Turuncu: Sıkışma (Squeeze)\n• Kırmızı: Negatif Uyumsuzluk\n• Mavi: Pozitif Uyumsuzluk\n\n🎯 OPTİMUM: Açık (görsel takip için)\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Changes candle colors based on the strategy.\n\n📌 COLOR CODES:\n• Green: Rally (Walking)\n• Lime: Breakout\n• Orange: Squeeze\n• Red: Negative Divergence\n• Blue: Positive Divergence\n\n🎯 OPTIMUM: On (for visual tracking)"
+ )
+
+whisper_color = input.color(
+     #cebc18, 
+     "Fısıltı Rengi | Whisper Color", 
+     group=group_vis,
+     tooltip="🇹🇷 AÇIKLAMA: Tablodaki 'Fısıltı' satırının metin rengi.\n📌 NOT: Durum mesajları otomatik renklidir.\n🎯 OPTİMUM: Koyu tema: Altın veya Beyaz | Açık tema: Siyah\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Text color for the 'Whisper' row in the table.\n📌 NOTE: Status messages are auto-colored.\n🎯 OPTIMUM: Dark theme: Gold or White | Light theme: Black"
+ )
+
+comment_color = input.color(
+     color.white, 
+     "Veri Rengi | Data Text Color", 
+     group=group_vis,
+     tooltip="🇹🇷 AÇIKLAMA: Tablodaki 'Bant Genişliği' satırının metin rengi.\n🎯 OPTİMUM: Koyu tema: Beyaz | Açık tema: Siyah\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Text color for the 'Band Width' row in the table.\n🎯 OPTIMUM: Dark theme: White | Light theme: Black"
+ )
+
+// --- GRUP 2: BOLLINGER ---
+group_bb = "Bollinger Ayarları | Bollinger Settings"
+
+length = input.int(
+     20, 
+     "Uzunluk | Length", 
+     group=group_bb, 
+     tooltip="🇹🇷 AÇIKLAMA: Bollinger Bandı için kullanılan hareketli ortalama uzunluğu.\n\n📌 ETKİSİ:\n• Düşük (10-15): Hızlı tepki, daha fazla sinyal, gürültülü\n• Orta (20): Standart (John Bollinger'in önerisi)\n• Yüksek (50+): Yavaş ama güvenilir\n\n⚠️ DİKKAT: 20'den farklı değer kullanırsanız klasik stratejiler bozulabilir!\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Moving average length used for the Bollinger Band.\n\n📌 IMPACT:\n• Low (10-15): Fast reaction, more signals, noisy\n• Medium (20): Standard (John Bollinger's recommendation)\n• High (50+): Slow but reliable\n\n⚠️ WARNING: Changing from 20 may disrupt classic BB strategies!"
+ )
+
+mult = input.float(
+     2.0, 
+     "Standart Sapma | Std Dev", 
+     group=group_bb, 
+     step=0.1, 
+     tooltip="🇹🇷 AÇIKLAMA: Bantların genişliğini belirleyen çarpan (volatilite hassasiyeti).\n\n📌 ETKİSİ:\n• Düşük (1.5): Dar bantlar, sık sinyal\n• Orta (2.0): Standart genişlik\n• Yüksek (2.5-3.0): Geniş bantlar, nadir sinyal\n\n🎯 OPTİMUM: Kripto: 2.5 | Hisse: 2.0 | Düşük volatilite: 1.5\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Multiplier determining band width (volatility sensitivity).\n\n📌 IMPACT:\n• Low (1.5): Narrow bands, frequent signals\n• Medium (2.0): Standard width\n• High (2.5-3.0): Wide bands, rare signals\n\n🎯 OPTIMUM: Crypto: 2.5 | Stocks: 2.0 | Low Vol: 1.5"
+ )
+
+// --- GRUP 3: STRATEJİ HASSASİYETİ ---
+group_sq = "Sıkışma & Trend | Squeeze & Trend"
+
+strict_breakout = input.bool(
+     true, 
+     "Katı Patlama Filtresi | Strict Breakout Filter", 
+     group=group_sq,
+     tooltip="🇹🇷 AÇIKLAMA: John Bollinger'in klasik patlama stratejisi.\n\n📌 KUTU SEÇİLİ (✅) - KATI MOD:\n• Üst bant yukarı, ALT BANT AŞAĞI gitmeli (maksimum açılma)\n• Sadece en güçlü volatilite anlarını yakalar\n\n📌 KUTU SEÇİLİ DEĞİL (❌) - GEVŞEK MOD:\n• Alt bant kontrolü yapmaz\n• Daha fazla patlama yakalar ama bazıları zayıf olabilir\n\n🎯 OPTİMUM: KUTU SEÇİLİ (✅) - Varsayılan\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: John Bollinger's classic breakout strategy.\n\n📌 CHECKED (✅) - STRICT MODE:\n• Upper band must go UP, LOWER BAND must go DOWN (max expansion)\n• Catches only the strongest volatility moments\n\n📌 UNCHECKED (❌) - LOOSE MODE:\n• Ignores lower band direction\n• Catches more breakouts but some may be weak\n\n🎯 OPTIMUM: CHECKED (✅) - Default"
+ )
+
+sq_len = input.int(
+     100, 
+     "Sıkışma Derinliği | Squeeze Lookback", 
+     group=group_sq, 
+     tooltip="🇹🇷 AÇIKLAMA: Bant genişliğinin son kaç bar içindeki en düşük seviyeye yakın olduğunu kontrol eder.\n\n📌 MANTIK: Mevcut genişlik, son [X] barın en dar genişliğinin %110'u ise 'Sıkışma' der.\n🎯 OPTİMUM: Günlük: 100 | Saatlik: 50-100\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Checks if the band width is near its lowest level within the last X bars.\n\n📌 LOGIC: If current width is 110% of the narrowest width in [X] bars, it's a 'Squeeze'.\n🎯 OPTIMUM: Daily: 100 | Hourly: 50-100"
+ )
+
+trend_len = input.int(
+     3, 
+     "Trend Hassasiyeti | Trend Sensitivity", 
+     group=group_sq, 
+     tooltip="🇹🇷 AÇIKLAMA: Walking the Bands (Bant üstünde yürüme) tespiti için kaç barın üst bant üzerinde olması gerektiğini belirler.\n\n📌 MANTIK: Son [X] bardan [X-1] tanesi üst bant üzerindeyse 'Güçlü Trend' der.\n🎯 OPTİMUM: Günlük: 3 | Saatlik: 3-4\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Determines how many bars must be above the upper band to detect 'Walking the Bands'.\n\n📌 LOGIC: If [X-1] out of the last [X] bars are above the upper band, it's a 'Strong Trend'.\n🎯 OPTIMUM: Daily: 3 | Hourly: 3-4"
+ )
+
+bo_limit = input.float(
+     10, 
+     "Patlama Max Uzaklık % | Breakout Max Dist %", 
+     group=group_sq, 
+     step=1, 
+     tooltip="🇹🇷 AÇIKLAMA: Patlama sinyalinde, fiyatın üst banttan en fazla yüzde kaç uzaklaşabileceğini belirler.\n📌 NE İŞE YARAR: Çok uçmuş (gap up) hisseleri eler. Sadece taze patlamaları gösterir.\n🎯 OPTİMUM: Hisse: 10% | Kripto: 15-20%\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Determines the maximum percentage the price can distance itself from the upper band during a breakout.\n📌 PURPOSE: Filters out overextended (gap up) assets. Shows only fresh breakouts.\n🎯 OPTIMUM: Stocks: 10% | Crypto: 15-20%"
+ )
+
+use_vol_filter = input.bool(
+     false, 
+     "🌡️ Volatilite Filtresi | Volatility Filter", 
+     group=group_sq,
+     tooltip="🇹🇷 AÇIKLAMA: Düşük volatilitede sinyalleri filtreler.\n📌 MANTIK: ATR(14) > ATR(50) ortalaması × Eşik ise 'yüksek volatilite'. Düşük volatilitede Patlama ve Ralli sinyalleri VERİLMEZ.\n🎯 OPTİMUM: Kapalı (sadece çok yanlış sinyal varsa aç)\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Filters signals during low volatility.\n📌 LOGIC: If ATR(14) > ATR(50) avg × Threshold, it's 'high volatility'. Breakout/Rally signals are HIDDEN during low volatility.\n🎯 OPTIMUM: Off (turn on only if there are too many false signals)"
+ )
+
+vol_threshold = input.float(
+     1.2, 
+     "Volatilite Eşiği | Volatility Threshold", 
+     group=group_sq, 
+     minval=1.0, maxval=2.0, step=0.1,
+     tooltip="🇹🇷 AÇIKLAMA: ATR(14) / ATR(50) oranı bu değerin üstündeyse 'yüksek volatilite' der.\n🎯 OPTİMUM: Hisse: 1.2 | Kripto: 1.3-1.5\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: If ATR(14) / ATR(50) ratio is above this value, it's considered 'high volatility'.\n🎯 OPTIMUM: Stocks: 1.2 | Crypto: 1.3-1.5"
+ )
+
+group_piv = "W/M Formasyon | W/M Patterns"
+
+leftBars = input.int(
+     5, 
+     "Sol Pivot | Left Pivot", 
+     group=group_piv, 
+     tooltip="🇹🇷 AÇIKLAMA: Tepe/Dip tespiti için sol taraftaki mum sayısı.\n🎯 OPTİMUM: 5 (klasik pivot ayarı)\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Number of left bars for peak/valley detection.\n🎯 OPTIMUM: 5 (classic pivot setting)"
+ )
+
+rightBars = input.int(
+     2, 
+     "Sağ Pivot | Right Pivot", 
+     group=group_piv, 
+     tooltip="🇹🇷 AÇIKLAMA: Tepe/Dip onayı için sağ taraftaki mum sayısı.\n🎯 OPTİMUM: Günlük: 2 | Saatlik: 2-3\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: Number of right bars for peak/valley confirmation.\n🎯 OPTIMUM: Daily: 2 | Hourly: 2-3"
+ )
+
+// ============================================================================
+// 📐 HESAPLAMALAR / CALCULATIONS
+// ============================================================================
+[middle, upper, lower] = ta.bb(close, length, mult)
+bb_width = ((upper - lower) / middle) * 100
+percent_b = (close - lower) / (upper - lower)
+
+atr_current = ta.atr(14)
+atr_avg = ta.sma(ta.atr(14), 50)
+is_high_volatility = atr_current > atr_avg * vol_threshold
+
+dist_to_upper = close > upper ? ((close - upper) / upper) * 100 : 0
+
+// ============================================================================
+// ⚔️ 6 BÜYÜK SİLAH (STRATEJİLER) / 6 MAIN STRATEGIES
+// ============================================================================
+
+// 1️⃣ THE SQUEEZE
+is_squeeze = bb_width <= ta.lowest(bb_width, sq_len) * 1.10
+
+// 2️⃣ THE BREAKOUT
+bool is_breakout_raw = strict_breakout ? 
+     (close > upper and bb_width > bb_width[1] and upper > upper[1] and lower < lower[1]) :
+     (close > upper and bb_width > bb_width[1] and upper > upper[1])
+
+is_breakout = use_vol_filter ? (is_breakout_raw and is_high_volatility) : is_breakout_raw
+
+// 3️⃣ WALKING THE BANDS
+bool is_walking_raw = math.sum(close >= upper ? 1 : 0, trend_len) >= (trend_len - 1)
+is_walking = use_vol_filter ? (is_walking_raw and is_high_volatility) : is_walking_raw
+
+// 4️⃣ MEAN REVERSION
+is_reversion_short = (not is_squeeze) and (not is_breakout) and (high >= upper) and (close < open) and (percent_b < 0.9)
+is_reversion_long  = (not is_squeeze) and (not is_breakout) and (low <= lower) and (close > open) and (percent_b > 0.1)
+
+// 5️⃣ W & M PATTERNS
+pl = ta.pivotlow(low, leftBars, rightBars)
+ph = ta.pivothigh(high, leftBars, rightBars)
+
+var float last_pl_val = na
+var bool  last_pl_out = false
+bool is_w_pattern = false
+if not na(pl)
+    bool current_in = pl > lower[rightBars]
+    if current_in and last_pl_out
+        is_w_pattern := true
+    last_pl_val := pl
+    last_pl_out := pl < lower[rightBars]
+
+var float last_ph_val = na
+var bool  last_ph_out = false
+bool is_m_pattern = false
+if not na(ph)
+    bool current_in = ph < upper[rightBars]
+    if current_in and last_ph_out
+        is_m_pattern := true
+    last_ph_val := ph
+    last_ph_out := ph > upper[rightBars]
+
+// 6️⃣ %B DIVERGENCE
+bool bear_div = false
+var float last_price_ph = na
+var float last_pb_ph = na
+
+if not na(ph) 
+    float current_pb_val = percent_b[rightBars]
+    if not na(last_price_ph) and ph > last_price_ph and current_pb_val < last_pb_ph
+        bear_div := true
+    last_price_ph := ph
+    last_pb_ph := current_pb_val
+
+bool bull_div = false
+var float last_price_pl = na
+var float last_pb_pl = na
+
+if not na(pl)
+    float current_pb_val = percent_b[rightBars]
+    if not na(last_price_pl) and pl < last_price_pl and current_pb_val > last_pb_pl
+        bull_div := true
+    last_price_pl := pl
+    last_pb_pl := current_pb_val
+
+// 7️⃣ ORTA BANT KIRILIMI / MID-BAND CROSS
+is_ma_cross = ta.crossover(close, middle)
+is_ma_trend = close > middle and close[1] > middle[1] and close > open
+
+// ============================================================================
+// 🎨 MUM BOYAMA & DURUM BELİRLEME / BAR COLORING & STATUS
+// ============================================================================
+color bar_color = na
+string durum_mesaji = is_tr ? "Yatay / Normal" : "Ranging / Normal"
+string fisilti_mesaji = is_tr ? "İzlemeye Devam Et" : "Keep Watching"
+color durum_rengi = color.gray
+
+if bear_div
+    durum_mesaji := is_tr ? "⚠️ NEGATİF UYUMSUZLUK" : "⚠️ NEGATIVE DIVERGENCE"
+    fisilti_mesaji := is_tr ? "Fiyat çıkıyor ama güç bitti. Düşüş!" : "Price rising but losing power. Drop!"
+    durum_rengi := color.red
+    bar_color := color.red
+else if bull_div
+    durum_mesaji := is_tr ? "💎 POZİTİF UYUMSUZLUK" : "💎 POSITIVE DIVERGENCE"
+    fisilti_mesaji := is_tr ? "Fiyat düşüyor ama topluyorlar. Dönüş!" : "Price dropping but accumulating. Reversal!"
+    durum_rengi := color.blue
+    bar_color := color.blue
+else if is_breakout
+    durum_mesaji := is_tr ? "🔥 BREAKOUT (Patlama)" : "🔥 BREAKOUT"
+    fisilti_mesaji := is_tr ? "Volatilite arttı, RALLİ BAŞLIYOR!" : "Volatility spiked, RALLY STARTING!"
+    durum_rengi := color.lime
+    bar_color := color.lime 
+else if is_walking
+    durum_mesaji := is_tr ? "🚀 WALKING (Ralli Modu)" : "🚀 WALKING (Rally Mode)"
+    fisilti_mesaji := is_tr ? "Trend çok güçlü. Satma, taşı!" : "Trend is very strong. Hold it!"
+    durum_rengi := color.green
+    bar_color := color.green 
+else if is_ma_cross
+    durum_mesaji := is_tr ? "⚡ ORTA BANT KIRILIMI" : "⚡ MID-BAND CROSS"
+    fisilti_mesaji := is_tr ? "Trend dönüyor olabilir. Takip!" : "Trend might be reversing. Track it!"
+    durum_rengi := color.rgb(151, 137, 10)
+    bar_color := color.yellow
+else if is_w_pattern
+    durum_mesaji := is_tr ? "✅ W FORMASYONU (Dip)" : "✅ W PATTERN (Bottom)"
+    fisilti_mesaji := is_tr ? "Dönüş sinyali (AL)" : "Reversal signal (BUY)"
+    durum_rengi := color.teal
+    bar_color := color.teal
+else if is_m_pattern
+    durum_mesaji := is_tr ? "🔻 M FORMASYONU (Tepe)" : "🔻 M PATTERN (Top)"
+    fisilti_mesaji := is_tr ? "Dönüş sinyali (SAT)" : "Reversal signal (SELL)"
+    durum_rengi := color.red
+    bar_color := color.red
+else if is_squeeze
+    durum_mesaji := is_tr ? "⏳ SQUEEZE (Sıkışma)" : "⏳ SQUEEZE"
+    fisilti_mesaji := is_tr ? "Fırtına öncesi sessizlik." : "Calm before the storm."
+    durum_rengi := color.orange
+    bar_color := color.orange 
+else if is_reversion_short
+    durum_mesaji := is_tr ? "↩️ DÜZELTME" : "↩️ REVERSION"
+    fisilti_mesaji := is_tr ? "Banttan red yedi." : "Rejected from the band."
+    durum_rengi := color.maroon
+    bar_color := color.maroon
+
+barcolor(use_barcol ? bar_color : na)
+
+// ============================================================================
+// 📊 DASHBOARD (AYARLANABİLİR / CUSTOMIZABLE)
+// ============================================================================
+var table_pos = position.top_right
+if dash_pos == "Sağ Alt | Bottom Right"
+    table_pos := position.bottom_right
+else if dash_pos == "Sol Üst | Top Left"
+    table_pos := position.top_left
+else if dash_pos == "Sol Alt | Bottom Left"
+    table_pos := position.bottom_left
+
+var table_size = size.small
+if dash_size == "Normal"
+    table_size := size.normal
+else if dash_size == "Büyük | Large"
+    table_size := size.large
+
+var table dash = table.new(table_pos, 2, 5, border_width=1)
+
+if barstate.islast and dash_show
+    table.cell(dash, 0, 0, "📊 BOLLINGER HUNTER", bgcolor=color.new(color.blue, 20), text_color=color.white, text_size=table_size)
+    table.cell(dash, 1, 0, is_tr ? "DURUM" : "STATUS", bgcolor=color.new(color.blue, 20), text_color=color.white, text_size=table_size)
+    
+    table.cell(dash, 0, 1, is_tr ? "Piyasa Modu:" : "Market Mode:", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=table_size)
+    table.cell(dash, 1, 1, durum_mesaji, bgcolor=durum_rengi, text_color=color.white, text_size=table_size)
+    
+    table.cell(dash, 0, 2, is_tr ? "💬 Fısıltı:" : "💬 Whisper:", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=table_size)
+    table.cell(dash, 1, 2, fisilti_mesaji, bgcolor=color.black, text_color=whisper_color, text_size=table_size)
+
+    table.cell(dash, 0, 3, is_tr ? "Bant Genişliği:" : "Band Width:", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=table_size)
+    table.cell(dash, 1, 3, str.tostring(bb_width, "#.##") + "%", bgcolor=color.black, text_color=comment_color, text_size=table_size)
+
+    if use_vol_filter
+        table.cell(dash, 0, 4, is_tr ? "🌡️ Volatilite:" : "🌡️ Volatility:", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=table_size)
+        vol_status = is_high_volatility ? (is_tr ? "YÜKSEK ✅" : "HIGH ✅") : (is_tr ? "DÜŞÜK ⚠️" : "LOW ⚠️")
+        vol_color = is_high_volatility ? color.new(color.green, 20) : color.new(color.orange, 20)
+        table.cell(dash, 1, 4, vol_status, bgcolor=vol_color, text_color=color.white, text_size=table_size)
+
+// ============================================================================
+// 🖌️ GRAFİK ÇİZİMLERİ / CHART PLOTS
+// ============================================================================
+p1 = plot(upper, "Üst Bant | Upper Band", linewidth=2, color=color.new(color.red, 50))
+p2 = plot(lower, "Alt Bant | Lower Band", linewidth=2, color=color.new(color.green, 50))
+fill(p1, p2, color=color.new(color.blue, 95))
+plot(middle, "Orta Bant | Middle Band", color=color.orange, linewidth=2)
+
+plotshape(is_w_pattern, "W", shape.labelup, location.belowbar, color.green, text="W", textcolor=color.white)
+plotshape(is_m_pattern, "M", shape.labeldown, location.abovebar, color.red, text="M", textcolor=color.white)
+plotshape(bear_div, "Bear Div", shape.labeldown, location.abovebar, color.red, text="⚠️ NU", textcolor=color.white)
+plotshape(bull_div, "Bull Div", shape.labelup, location.belowbar, color.blue, text="💎 PU", textcolor=color.white)
+plotshape(is_ma_cross, "Cross", shape.triangleup, location.belowbar, color.yellow, size=size.small, text="MA", textcolor=color.yellow)
+
+// ============================================================================
+// 🕵️ SCREENER (HİSSE TAKİPÇİSİ) / SCREENER OUTPUTS
+// ============================================================================
+plot(is_squeeze ? 1 : 0, "Filtre: Sıkışma | Filter: Squeeze", display=display.data_window)
+plot(is_breakout and dist_to_upper <= bo_limit ? 1 : 0, "Filtre: Patlama | Filter: Breakout", display=display.data_window)
+plot(is_walking ? 1 : 0, "Filtre: Güçlü Trend | Filter: Walking", display=display.data_window)
+plot(is_reversion_long ? 1 : 0, "Filtre: Bant İçi Dönüş (AL) | Filter: Reversion (BUY)", display=display.data_window)
+plot(is_reversion_short ? 1 : 0, "Filtre: Bant İçi Dönüş (SAT) | Filter: Reversion (SELL)", display=display.data_window)
+plot(is_w_pattern ? 1 : 0, "Filtre: W Formasyonu | Filter: W Pattern", display=display.data_window)
+plot(is_m_pattern ? 1 : 0, "Filtre: M Formasyonu | Filter: M Pattern", display=display.data_window)
+plot(bear_div ? 1 : 0, "Filtre: Negatif Uyumsuzluk | Filter: Bear Div", display=display.data_window)
+plot(bull_div ? 1 : 0, "Filtre: Pozitif Uyumsuzluk | Filter: Bull Div", display=display.data_window)
+plot(is_ma_cross ? 1 : 0, "Filtre: Orta Bant Kırılımı | Filter: MA Cross", display=display.data_window)
+plot(is_ma_trend ? 1 : 0, "Filtre: Orta Bant Trendi | Filter: MA Trend", display=display.data_window)
+plot(bb_width, "Veri: Bant Genişliği | Data: Band Width", display=display.data_window)
+plot(dist_to_upper, "Veri: Patlama Uzaklık % | Data: Breakout Dist %", display=display.data_window)
+plot(is_high_volatility ? 1 : 0, "Filtre: Yüksek Volatilite | Filter: High Volatility", display=display.data_window)
+plot(atr_current / atr_avg, "Veri: Volatilite Oranı | Data: Volatility Ratio", display=display.data_window)
+
+// ============================================================================
+// 📚 FİLTRE KILAVUZU TABLOSU / FILTER GUIDE TABLE
+// ============================================================================
+show_guide = input.bool(false, "📚 Filtre Kılavuzu | Filter Guide", group="Filtre Kılavuzu | Filter Guide", tooltip="🇹🇷 AÇIKLAMA: Pine Screener'da kullanabileceğiniz tüm filtreleri ve açıklamalarını gösteren rehber tablo.\n🎯 OPTİMUM: Kapalı (sadece öğrenme aşamasında açın)\n\n➖➖➖➖➖➖➖➖➖➖\n\n🇬🇧 EXPLANATION: A guide table showing all available filters and their descriptions for the Pine Screener.\n🎯 OPTIMUM: Off (turn on only for learning)")
+guide_pos = input.string("Sol Alt | Bottom Left", "Kılavuz Konumu | Guide Position", options=["Sağ Üst | Top Right", "Sağ Alt | Bottom Right", "Sol Üst | Top Left", "Sol Alt | Bottom Left", "Orta Üst | Top Center", "Orta Alt | Bottom Center"], group="Filtre Kılavuzu | Filter Guide")
+guide_size = input.string("Küçük | Small", "Kılavuz Boyutu | Guide Size", options=["Küçük | Small", "Normal", "Büyük | Large"], group="Filtre Kılavuzu | Filter Guide")
+
+var guide_table_pos = position.bottom_left
+if guide_pos == "Sağ Üst | Top Right"
+    guide_table_pos := position.top_right
+else if guide_pos == "Sağ Alt | Bottom Right"
+    guide_table_pos := position.bottom_right
+else if guide_pos == "Sol Üst | Top Left"
+    guide_table_pos := position.top_left
+else if guide_pos == "Sol Alt | Bottom Left"
+    guide_table_pos := position.bottom_left
+else if guide_pos == "Orta Üst | Top Center"
+    guide_table_pos := position.top_center
+else if guide_pos == "Orta Alt | Bottom Center"
+    guide_table_pos := position.bottom_center
+
+var guide_table_size = size.small
+if guide_size == "Normal"
+    guide_table_size := size.normal
+else if guide_size == "Büyük | Large"
+    guide_table_size := size.large
+
+var table guide_table = table.new(guide_table_pos, 3, 14, border_width=1)
+
+if barstate.islast and show_guide
+    table.cell(guide_table, 0, 0, is_tr ? "📚 FİLTRE KILAVUZU" : "📚 FILTER GUIDE", bgcolor=color.new(color.blue, 20), text_color=color.white, text_size=guide_table_size)
+    table.cell(guide_table, 1, 0, is_tr ? "AÇIKLAMA" : "DESCRIPTION", bgcolor=color.new(color.blue, 20), text_color=color.white, text_size=guide_table_size)
+    table.cell(guide_table, 2, 0, is_tr ? "KULLANIM" : "USAGE", bgcolor=color.new(color.blue, 20), text_color=color.white, text_size=guide_table_size)
+    
+    table.cell(guide_table, 0, 1, is_tr ? "⏳ Sıkışma" : "⏳ Squeeze", bgcolor=color.new(color.orange, 80), text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 1, is_tr ? "Bantlar daralmış, patlama yakın" : "Bands narrowed, breakout imminent", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 1, "= 1", bgcolor=color.black, text_color=color.yellow, text_size=guide_table_size)
+    
+    table.cell(guide_table, 0, 2, is_tr ? "🔥 Patlama" : "🔥 Breakout", bgcolor=color.new(color.lime, 80), text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 2, is_tr ? "Üst bant delindi, volatilite arttı" : "Upper band pierced, volatility spiked", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 2, "= 1", bgcolor=color.black, text_color=color.yellow, text_size=guide_table_size)
+    
+    table.cell(guide_table, 0, 3, is_tr ? "🚀 Güçlü Trend" : "🚀 Walking", bgcolor=color.new(color.green, 80), text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 3, is_tr ? "Fiyat üst banda yapışık yükseliyor" : "Price riding the upper band", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 3, "= 1", bgcolor=color.black, text_color=color.yellow, text_size=guide_table_size)
+    
+    table.cell(guide_table, 0, 4, is_tr ? "↩️ Dönüş (AL)" : "↩️ Reversion (BUY)", bgcolor=color.new(color.teal, 80), text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 4, is_tr ? "Alt banda iğne, yeşil kapanış" : "Wick to lower band, green close", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 4, "= 1", bgcolor=color.black, text_color=color.yellow, text_size=guide_table_size)
+    
+    table.cell(guide_table, 0, 5, is_tr ? "↩️ Dönüş (SAT)" : "↩️ Reversion (SELL)", bgcolor=color.new(color.maroon, 80), text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 5, is_tr ? "Üst banda iğne, kırmızı kapanış" : "Wick to upper band, red close", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 5, "= 1", bgcolor=color.black, text_color=color.yellow, text_size=guide_table_size)
+    
+    table.cell(guide_table, 0, 6, is_tr ? "✅ W Formasyon" : "✅ W Pattern", bgcolor=color.new(color.teal, 80), text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 6, is_tr ? "İkili dip, dönüş sinyali (AL)" : "Double bottom, reversal (BUY)", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 6, "= 1", bgcolor=color.black, text_color=color.yellow, text_size=guide_table_size)
+    
+    table.cell(guide_table, 0, 7, is_tr ? "🔻 M Formasyon" : "🔻 M Pattern", bgcolor=color.new(color.red, 80), text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 7, is_tr ? "İkili tepe, dönüş sinyali (SAT)" : "Double top, reversal (SELL)", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 7, "= 1", bgcolor=color.black, text_color=color.yellow, text_size=guide_table_size)
+    
+    table.cell(guide_table, 0, 8, is_tr ? "⚠️ Neg. Uyumsuz" : "⚠️ Bear Div", bgcolor=color.new(color.red, 80), text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 8, is_tr ? "Fiyat çıkıyor, güç bitti (DÜŞÜŞ)" : "Price up, momentum down (DROP)", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 8, "= 1", bgcolor=color.black, text_color=color.yellow, text_size=guide_table_size)
+    
+    table.cell(guide_table, 0, 9, is_tr ? "💎 Poz. Uyumsuz" : "💎 Bull Div", bgcolor=color.new(color.blue, 80), text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 9, is_tr ? "Fiyat düşüyor, topluyorlar (YÜKSELİŞ)" : "Price down, accumulating (RISE)", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 9, "= 1", bgcolor=color.black, text_color=color.yellow, text_size=guide_table_size)
+    
+    table.cell(guide_table, 0, 10, is_tr ? "⚡ MA Kırılım" : "⚡ MA Cross", bgcolor=color.new(color.yellow, 80), text_color=color.black, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 10, is_tr ? "Fiyat MA20'yi yukarı kesti (TAZE)" : "Price crossed MA20 up (FRESH)", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 10, "= 1", bgcolor=color.black, text_color=color.yellow, text_size=guide_table_size)
+    
+    table.cell(guide_table, 0, 11, is_tr ? "⚡ MA Trend" : "⚡ MA Trend", bgcolor=color.new(color.yellow, 80), text_color=color.black, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 11, is_tr ? "Fiyat MA20 üstünde, yeşil (TEYİTLİ)" : "Price above MA20, green (CONFIRMED)", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 11, "= 1", bgcolor=color.black, text_color=color.yellow, text_size=guide_table_size)
+    
+    table.cell(guide_table, 0, 12, is_tr ? "🌡️ Yüksek Vol." : "🌡️ High Vol.", bgcolor=color.new(color.purple, 80), text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 12, is_tr ? "ATR(14) > ATR(50) × Eşik" : "ATR(14) > ATR(50) × Threshold", bgcolor=color.black, text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 12, "= 1", bgcolor=color.black, text_color=color.yellow, text_size=guide_table_size)
+
+    table.cell(guide_table, 0, 13, is_tr ? "💡 NOT" : "💡 NOTE", bgcolor=color.new(color.gray, 80), text_color=color.white, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 1, 13, is_tr ? "Screener'da filtreyi seç, '= 1' yaz" : "Select filter in Screener, type '= 1'", bgcolor=color.black, text_color=color.orange, text_halign=text.align_left, text_size=guide_table_size)
+    table.cell(guide_table, 2, 13, is_tr ? "Örnek: 'Filtre: Patlama = 1'" : "Example: 'Filter: Breakout = 1'", bgcolor=color.black, text_color=color.lime, text_halign=text.align_left, text_size=guide_table_size)

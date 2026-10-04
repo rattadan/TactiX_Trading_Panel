@@ -1,0 +1,71 @@
+// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
+//@version=5
+// @title: Volatility Trend (Zeiierman)
+// @description: Controls the period over which the trend is calculated
+indicator("Volatility Trend (Zeiierman)", overlay = true)
+
+t1 = "Controls the period over which the trend is calculated. Lower values will make the trend more sensitive to price changes, while higher values will make it smoother."
+t2 = "Controls the dynamic responsiveness of the trend. Higher values will make the trend adjust more slowly to price changes."
+t3 = "The first value sets the scaling factor for volatility. A higher value will widen the distance between the trend lines and the price. \n\nThe second value: Sensitivity for volatility adjustment. Values range from 0 to 1; higher values make the bands more sensitive to volatility changes."
+t4 = "Controls the degree of market squeeze taken into account. Higher values increase sensitivity."
+t5 = "If enabled, the algorithm will focus on short-term trends suitable for scalping strategies."
+
+trendControl           = input.int(20, title="Trend Control", minval=1, maxval=500, inline="", group="Trend Settings", tooltip=t1)
+trendDynamicControl    = input.float(100, title="Trend Dynamic", minval = 8, maxval=500, inline="", group="Trend Settings", tooltip=t2)
+volatilityControl      = input.float(10, title="Volatility", minval = 0, inline="vol", group="Volatility Settings")
+volatilitySensitivity  = input.float(0.5, title= "Sensitivity", minval = 0, maxval = 1, step=0.1, inline="vol", group="Volatility Settings", tooltip=t3)
+
+squeezeControl         = input.int(1, title="Squeeze Control", minval=1, maxval=200, group="Advanced Settings", tooltip=t4)
+shorttermtrend         = input.bool(false, title="Enable Scalping Trend (For BTC)", group="Advanced Settings", tooltip=t5)
+
+color_up    = input.color(color.navy, title="Line   ", inline="Line", group="Style")
+color_dn    = input.color(color.maroon, title="", inline="Line", group="Style")
+color_upper = input.color(color.new(#862458, 10), title="Cloud ", inline="Cloud", group="Style")
+color_lower = input.color(color.new(#493893, 10),title="", inline="Cloud", group="Style")
+
+
+// Var
+var float trend        = 0.0
+var int trendDirection = 0
+
+// Function to calculate standard deviation
+stddev_function(src_, p) =>
+    if bar_index < p - 1
+        0.0
+    else
+        sum = 0.0
+        for i = 0 to p - 1
+            sum := sum + src_[i]
+        mean = sum / p
+        sum_diff_sq = 0.0
+        for i = 0 to p - 1
+            sum_diff_sq := sum_diff_sq + math.pow(src_[i] - mean, 2)
+        stdev = shorttermtrend?math.sqrt(sum_diff_sq / close * p * squeezeControl) : math.sqrt(sum_diff_sq / p * squeezeControl)
+
+// Function to determine the trend direction
+trendDirectionFunction(dir) =>
+    dir - dir[1] > 0 ? 1 : (dir - dir[1] < 0 ? -1 : 0)
+
+// Call Trend Direction
+trendDirection := trendDirectionFunction(trend)
+
+// Call Scaled StdDev
+scaledStdDev    = stddev_function(trend, trendControl) * volatilityControl
+priceTrend      = close - trend > 0 ? close - trend : trend - close
+
+// Calculate the Trend
+trendAdjustment = priceTrend>scaledStdDev?math.avg(close,trend):trendDirection * (scaledStdDev * (1/volatilityControl) * (1/trendDynamicControl)) + trend
+trend          := trendAdjustment
+
+// Get Upper and Lower Bands
+upper = trend + (volatilitySensitivity * scaledStdDev)
+lower = trend - (volatilitySensitivity * scaledStdDev)
+
+//Plot
+trueTrend = trendDirection == trendDirection[1]
+color_    = trendDirection == 1 ? color_up : color_dn
+trend_ = plot(trueTrend?trend:na, title="Trend Line", color=color_)
+upper_ = plot(trueTrend?upper:na, title="Upper Circle Line", color = color.new(color.black,100))
+lower_ = plot(trueTrend?lower:na, title="Lower Circle Line", color = color.new(color.black,100))
+fill(upper_, trend_, top_color = color_upper, bottom_color =color.new(na,100), top_value = upper, bottom_value = trend, title="Bg Upper Circle")
+fill(trend_, lower_, top_color = color.new(na,100), bottom_color = color_lower, top_value = trend, bottom_value = lower, title="Bg Lower Circle")

@@ -65,6 +65,29 @@ Keep track on the progress and check:
 
 https://colosseum.com/arena/projects/tactix-trading-panel
 
+In practice, the indicator subscription should flow like this:
+
+The Dashboard pushes the indicator code to our embedding model getting the vector data as return. Now the contract needs to compare this vector against already saved vectors in its database and calculate the semantic distance of it. 
+Proximity of 1.000 to 0.950 means, the newly subscribed Code is already present in the database, entitling the code as a remix of an already existent indicator. In this case the parent should receive the majority of the reward (>50%, precisely calculated against a curve between 1.00 and 0.95 somehow
+
+A score between 0.950 and 0.900 would mean the indicator uses code from the parent, but add significant changes, so in this case the parent would receieve just a small part of the reward <50%, calced down to 0.900
+
+A code score <0.90 would mean, the indicator is not a replica or remix, or at least differs more than needed to claim it a remix. in this case the full rewards would go to the subscriber.
+
+It would be possible to run this query beforehand the contract inscription, so the user would be able to change his code accordingly, or to accept the algorithms decision. With inscription, the reward share would be set "in stone" into the conract.
+
+If several indicators chains against each other, using a child would trigger a rewards split cascade: 
+
+User uses Remix-2 indicator, which is split 25% to Remix-1 and 75% for itself
+
+then those 25% coming to Remix-1 would be split again, accoring the Remix-1 splitting attributes (e.g. 45% for parent, 65% for himself)
+
+So the parent (father of both Remix-1 and Remix-2) would receive 45% of those 25%   (calc on your own ..... approx. 12%)
+
+Drawback is that very inscription will cost more gas, as more data needs to be processed and stored. Not sure how this will scale on a large picture (like 5000 vectors to compare against the new one).. something to work out in the ftuture
+
+To prevent inscription frontrunning, the dApp adds a ECDSA signature to the contract call, so the message body would be dropped by the contract if someone would try to change the reward address or inscribe himself earlier.
+
 
 ## Semantic similarity toolkit — method & findings
 

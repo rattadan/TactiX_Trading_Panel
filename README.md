@@ -66,3 +66,64 @@ Keep track on the progress and check:
 https://colosseum.com/arena/projects/tactix-trading-panel
 
 
+## Semantic similarity toolkit — method & findings
+
+Full writeup with experiment data: **[SEMANTIC_SIMILARITY.md](SEMANTIC_SIMILARITY.md)**
+
+Experimental tooling for the reward-distribution idea above: embed indicator
+source code with a local Ollama embedding model, measure vector proximity,
+and use it to detect parent/child (original vs. remixed) scripts.
+
+### Files
+
+| file                                           | what it does                                                                                                                                                                           |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `embed_indicators.py`                          | CLI: `build` embeds all `.pine` in `indicator-scripts/` into a per-model JSON DB; `report` prints the pairwise similarity matrix; `check <file>` simulates an upload and finds parents |
+| `embed_files.ipynb`                            | interactive companion to `build` — pick which files to (re)embed per model                                                                                                             |
+| `compare_two_scripts.ipynb`                    | deep-dive on one pair: verdict vs thresholds, nearest neighbours, chunk-level similarity heatmap, per-dimension contribution bars                                                      |
+| `compare_texts.ipynb` / `compare_texts_app.py` | embed any two texts (not just Pine) and compare; the `.py` is a browser UI at `localhost:8000` with templates and saves a JPG overview per pair to `comparisons/`                      |
+| `merge_experiment.py`                          | merge-sweep: splices two scripts at 0–100% and plots similarity vs each parent                                                                                                         |
+
+Requires `ollama serve` + `ollama pull qwen3-embedding:0.6b` (or `:4b`).
+
+### Method
+
+- **Preprocess**: strip all `//` comments and blank lines — comments describe
+  identity, not design, and would let uploaders spoof the score. Pine only.
+- **Chunk**: files are bigger than the model's context, so split into
+  overlapping 4000-char chunks (400 overlap, line-aligned).
+- **Embed**: one `ollama.embed` call per chunk batch, then **mean-pool** the
+  chunk vectors and L2-normalize to a unit vector per script.
+- **Center**: all Pine embeddings share a large common direction ("it's Pine
+  code"), flooring raw cosine around ~0.6 even for unrelated scripts. Each DB
+  stores a frozen `reference_mean` (corpus mean); subtracting it and
+  renormalizing leaves only what distinguishes scripts — unrelated pairs land
+  near 0. Thresholds are calibrated for the *centered* score.
+- **Thresholds** (0.6b, preprocess v2, calibrated Oct 2026 on 26 scripts):
+  `>= 0.80` remix/derivative → reward split; `>= 0.50` same design family.
+  Indicator vs its own strategy copy scores 0.82–0.86; unrelated median ~-0.06.
+
+### Findings
+
+- **Raw cosine is not usable alone** — two *different recipes* score 0.45,
+  recipe-vs-Pine-script 0.12; centering is what separates "same family" from
+  "same language".
+- **Merge-sweep** (`08_rsi_divergence.pine` × `macd_ema.pine`, see
+  `merge_sweep_*.jpg`): detection depends heavily on *how* code is merged —
+  - **concat** (B appended as a block): centered sim to A drops below the
+    remix threshold at just ~5% foreign content; B's own chunks get equal
+    weight in mean-pooling, diluting the A signal fast.
+  - **interleave** (B's lines sprinkled through A): stays "REMIX of A" up to
+    ~50–55% foreign content — every chunk still looks mostly like A.
+  - **dead zone**: ~55–80% merges sit near 0.5 vs *both* parents — undetectable
+    by whole-vector cosine either way.
+  - transition to "REMIX of B" only happens around ~95% B content.
+- **Implication for lineage detection**: a remixer bolting a foreign block
+  onto a copied script *evades* the whole-vector flag; line-by-line laundering
+  gets *caught*. Whole-vector centered cosine should therefore be paired with
+  chunk-level max-similarity (the heatmap in `compare_two_scripts.ipynb`),
+  which still exposes the copied half of a block merge.
+- Scores are **not comparable across models** — each model has its own DB and
+  frozen reference mean; `4b` is ~5–6× slower than `0.6b`.
+
+

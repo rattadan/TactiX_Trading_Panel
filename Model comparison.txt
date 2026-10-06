@@ -22,3 +22,6 @@ Take Note: Its not possible to change models afterwards, once you start with one
 
 Before parsing the indicator to the model, we cut out header and comments, to prevent spoofing the algorithm with comments
 
+Some further thoughts:
+
+The 

@@ -26,6 +26,9 @@ MODEL = "qwen3-embedding:0.6b"
 INDICATOR_DIR = Path(__file__).parent / "indicator-scripts"
 DB_PATH = Path(__file__).parent / "indicator_embeddings.json"
 
+# Bump whenever the text fed to the model changes; stale entries get re-embedded.
+PREPROCESS_VERSION = 2  # v1: header strip only; v2: all // comments + blank lines stripped
+
 
 def default_db_path(model: str) -> Path:
     """Per-model DB path so embeddings from different models don't collide."""
@@ -37,18 +40,24 @@ def default_db_path(model: str) -> Path:
 CHUNK_CHARS = 4000
 CHUNK_OVERLAP = 400
 
-# Cosine similarity thresholds for lineage detection, calibrated against
-# qwen3-embedding:0.6b on this repo's scripts (Oct 2026):
-#   renamed remix of same code  ~0.95   different AMT-family tools ~0.88
-#   unrelated indicators        ~0.55
-REMIX_THRESHOLD = 0.93   # likely a derivative / remix of the parent
-RELATED_THRESHOLD = 0.75  # same design family (reported, no split)
+# Mean-centered cosine thresholds for lineage detection, calibrated against
+# qwen3-embedding:0.6b, preprocess v2, on this repo's 26 scripts (Oct 2026):
+#   indicator vs its own strategy / derived copy  0.82-0.86
+#   same family (macd_ema vs mtf_ema)             ~0.72, then a gap down to 0.58
+#   unrelated indicators                          median ~-0.06, p95 ~0.38
+# Only valid for the frozen reference_mean in the DB — refreezing needs recalibration.
+REMIX_THRESHOLD = 0.80   # likely a derivative / remix of the parent
+RELATED_THRESHOLD = 0.50  # same design family (reported, no split)
 MAX_PARENT_SHARE = 0.5    # max fraction of a child's rewards routed to a parent
 
 
 def load_db() -> dict:
     if DB_PATH.exists():
-        return json.loads(DB_PATH.read_text())
+        db = json.loads(DB_PATH.read_text())
+        if db.get("model") != MODEL:
+            sys.exit(f"{DB_PATH.name} was built with {db.get('model')!r}, not {MODEL!r}. "
+                     f"Scores from different models are not comparable — use --model/--db.")
+        return db
     return {"model": MODEL, "indicators": {}}
 
 
@@ -70,23 +79,38 @@ def parse_metadata(source: str) -> dict:
     return meta
 
 
-def strip_header(source: str) -> str:
-    """Remove the leading header block and `// @key:` metadata lines.
+def _strip_line_comment(line: str) -> str:
+    """Cut a `//` comment from one line, ignoring `//` inside string literals."""
+    quote = None
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif line.startswith("//", i):
+            return line[:i]
+        i += 1
+    return line
 
-    The header (license boilerplate, //@version, title/author tags) describes
-    identity, not design — and identical license text inflates similarity
-    between unrelated scripts, so it stays out of the embedding input.
+
+def strip_comments(source: str) -> str:
+    """Remove every `//` comment (header, metadata, inline) and blank lines.
+
+    Comments describe identity, not design: license boilerplate inflates
+    similarity between unrelated scripts, and padding or copying comments
+    would let an uploader spoof the score. Only executable code is embedded.
     """
     body = []
-    in_header = True
     for line in source.splitlines():
-        s = line.strip()
-        if in_header and (s == "" or s.startswith("//")):
-            continue
-        in_header = False
-        if re.match(r"//\s*@\w+\s*:", s):
-            continue
-        body.append(line)
+        code = _strip_line_comment(line).rstrip()
+        if code.strip():
+            body.append(code)
     return "\n".join(body)
 
 
@@ -135,8 +159,8 @@ def embed_texts(texts: list[str]) -> np.ndarray:
 
 
 def embed_indicator(source: str) -> tuple[np.ndarray, int]:
-    """Embed one indicator: strip header -> chunk -> embed -> mean-pool -> normalize."""
-    chunks = chunk_source(strip_header(source))
+    """Embed one indicator: strip comments -> chunk -> embed -> mean-pool -> normalize."""
+    chunks = chunk_source(strip_comments(source))
     vecs = embed_texts(chunks)
     pooled = vecs.mean(axis=0)
     pooled /= np.linalg.norm(pooled) + 1e-12
@@ -147,11 +171,32 @@ def cosine(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12))
 
 
+def center(v: np.ndarray, mu: np.ndarray | None) -> np.ndarray:
+    """Subtract the frozen corpus mean and renormalize.
+
+    All Pine Script embeddings share a large common direction ("it's Pine
+    code"), which pushes even unrelated scripts to ~0.6 raw cosine. Removing
+    it leaves only what distinguishes scripts: unrelated pairs land near 0.
+    """
+    if mu is None:
+        return v
+    c = v - mu
+    return c / (np.linalg.norm(c) + 1e-12)
+
+
+def reference_mean(db: dict) -> np.ndarray | None:
+    mu = db.get("reference_mean")
+    if mu is None:
+        print("warning: DB has no reference_mean — using raw cosine (run `build`)\n")
+        return None
+    return np.asarray(mu)
+
+
 def source_hash(source: str) -> str:
     return hashlib.sha256(source.encode()).hexdigest()
 
 
-def cmd_build(force: bool) -> None:
+def cmd_build(force: bool, refreeze: bool) -> None:
     db = load_db()
     files = sorted(INDICATOR_DIR.glob("*.pine"))
     if not files:
@@ -160,7 +205,8 @@ def cmd_build(force: bool) -> None:
         source = f.read_text(encoding="utf-8", errors="replace")
         digest = source_hash(source)
         entry = db["indicators"].get(f.name, {})
-        if not force and entry.get("sha256") == digest and entry.get("vector"):
+        if (not force and entry.get("sha256") == digest and entry.get("vector")
+                and entry.get("preprocess") == PREPROCESS_VERSION):
             print(f"  skip  {f.name} (unchanged)")
             continue
         vec, n_chunks = embed_indicator(source)
@@ -175,12 +221,23 @@ def cmd_build(force: bool) -> None:
             "lines": source.count("\n") + 1,
             "chunks": n_chunks,
             "dim": int(vec.size),
+            "preprocess": PREPROCESS_VERSION,
             "first_inscribed_at": entry.get("first_inscribed_at", now),
             "embedded_at": now,
             "vector": vec.tolist(),
         }
         print(f"  embed {f.name} ({meta.get('title', f.stem)!r}, "
-              f"{n_chunks} chunks, dim={vec.size})")
+              f"{n_chunks} chunks, dim={vec.size})", flush=True)
+    stale_mean = db.get("reference_mean_preprocess") != PREPROCESS_VERSION
+    if refreeze or stale_mean or "reference_mean" not in db:
+        vecs = np.asarray([e["vector"] for e in db["indicators"].values()])
+        db["reference_mean"] = vecs.mean(axis=0).tolist()
+        db["reference_mean_n"] = len(vecs)
+        db["reference_mean_preprocess"] = PREPROCESS_VERSION
+        db["reference_mean_at"] = datetime.now(timezone.utc).isoformat()
+        print(f"Froze reference mean over {len(vecs)} indicators "
+              f"(|mean|={np.linalg.norm(vecs.mean(axis=0)):.3f})")
+    db["preprocess"] = PREPROCESS_VERSION
     save_db(db)
     print(f"Wrote {DB_PATH} ({len(db['indicators'])} indicators)")
 
@@ -214,7 +271,8 @@ def cmd_report(csv_path: Path | None, top: int) -> None:
     names = sorted(inds, key=lambda n: inds[n]["first_inscribed_at"])
     if len(inds) < 2:
         sys.exit("Need at least 2 embedded indicators — run `build` first.")
-    vecs = {n: np.asarray(inds[n]["vector"]) for n in names}
+    mu = reference_mean(db)
+    vecs = {n: center(np.asarray(inds[n]["vector"]), mu) for n in names}
 
     if csv_path:
         with open(csv_path, "w", newline="") as fh:
@@ -233,7 +291,8 @@ def cmd_report(csv_path: Path | None, top: int) -> None:
         print(f"  {sim:.4f}  {verdict_for(sim):<9} {a}  vs  {b}")
     print()
 
-    print(f"Model: {db['model']}   dim: {next(iter(vecs.values())).size}\n")
+    print(f"Model: {db['model']}   dim: {next(iter(vecs.values())).size}   "
+          f"similarity: {'mean-centered' if mu is not None else 'raw'} cosine\n")
     compact = len(names) > 10
     if not compact:
         print("Pairwise cosine similarity (rows/cols ordered by inscription time):")
@@ -278,9 +337,11 @@ def cmd_check(path: Path) -> None:
     inds = db["indicators"]
     if not inds:
         sys.exit("DB is empty — run `build` first.")
+    mu = reference_mean(db)
     source = path.read_text(encoding="utf-8", errors="replace")
     digest = source_hash(source)
     vec, n_chunks = embed_indicator(source)
+    vec = center(vec, mu)
     meta = parse_metadata(source)
     print(f"New upload: {path.name} ({meta.get('title', path.stem)!r}, {n_chunks} chunks)\n")
     names, sims, inscr = [], [], {}
@@ -289,7 +350,7 @@ def cmd_check(path: Path) -> None:
             print(f"  (identical code already inscribed as {name})\n")
             continue
         names.append(name)
-        sims.append(cosine(vec, np.asarray(e["vector"])))
+        sims.append(cosine(vec, center(np.asarray(e["vector"]), mu)))
         inscr[name] = e["first_inscribed_at"][:10]
     rows = lineage_table(names, sims, inscr)
     for name, sim, verdict, date in rows:
@@ -315,6 +376,8 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="embed all indicators into the vector DB")
     b.add_argument("--force", action="store_true", help="re-embed even if unchanged")
+    b.add_argument("--refreeze-mean", action="store_true",
+                   help="recompute the frozen reference mean (changes ALL scores)")
     r = sub.add_parser("report", help="similarity matrix + parent/child suggestions")
     r.add_argument("--csv", nargs="?", const=Path("indicator_similarity.csv"),
                    default=None, type=Path,
@@ -329,7 +392,7 @@ def main() -> None:
     elif MODEL != "qwen3-embedding:0.6b":
         DB_PATH = default_db_path(MODEL)
     if args.cmd == "build":
-        cmd_build(args.force)
+        cmd_build(args.force, args.refreeze_mean)
     elif args.cmd == "report":
         cmd_report(args.csv, args.top)
     elif args.cmd == "check":

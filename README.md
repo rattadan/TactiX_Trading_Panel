@@ -3,6 +3,8 @@ Strategies & Indicators
 This folder contains the Pine Script strategies and indicators that power the
 charting / backtesting engine in this app 
 
+https://app.tactix-panel.xyz/indicator-map
+
 ## Adding your own indicator or strategy
 
 We want indicator and strategy authors to earn rewards when traders use
@@ -31,8 +33,7 @@ a share of usage / subscription fees flows back to you.
 - Only submit scripts you wrote or have rights to redistribute. Respect the
   original license (many TradingView scripts are MPL-2.0 — keep the license
   header intact and credit the original author).
-- Reward addresses must be Injective `inj1...` addresses (EVM `0x` support
-  planned).
+
 - Scripts that are broken, plagiarized without attribution, or malicious
   (e.g. repaint scams presented as signals) will be removed and forfeit
   rewards.
@@ -40,10 +41,19 @@ a share of usage / subscription fees flows back to you.
 Questions or want to propose a different reward split? Open an issue or
 reach out to the maintainers.
 
+## Why rewards 
+
+Its the work, time, passion and enthusiasm of countless builders, that do the actual "chart-magic"
+ts not just to make the chart good looking, its a high quality data source to feed Jev AI Decision engine
+
+I speak for myself to say: if you want to encourage builders to spend time in passionate building, you NEED to incentivize this. I wouldn´t have spent month to build Tactix without this reward system like buildercodes on hyperliquid. 
+
+This is what web3 should be about: Code first, applied to real world problems, and rewarded for it.
+Not centralized entities funneling out majority of rewards
 
 ## Crypto World's Fair Colosseum Hackathon
 
-As contribution to the Crypto World's Fair Hackathon 2026 we would like to design the Indicator & Strategy rewards system as an opensourced part of our product suite.
+As contribution to the Crypto World's Fair Hackathon 2026 we would like to design the Indicator & Strategy rewards system as an opensourced part of our.
 There is a big community and even commercial creators for indicator already, offering their work as either opensourced (source code available), public (usable by TradingView Pro subscribers, but no visible sourcecode, as the pinescript execution runs serversided on Tradingview), and private (pay per indicator, also no sourcecode, pinescript execution serversided).
 
 TactiX Pinescript execution instead runs as a webworker process client sided, so actuall all indicators are available in plain code. This makes it diffcult to reward creators for their work, as copycats have an easy play.
@@ -74,7 +84,7 @@ A score between 0.950 and 0.900 would mean the indicator uses code from the pare
 
 A code score <0.90 would mean, the indicator is not a replica or remix, or at least differs more than needed to claim it a remix. in this case the full rewards would go to the subscriber.
 
-It would be possible to run this query beforehand the contract inscription, so the user would be able to change his code accordingly, or to accept the algorithms decision. With inscription, the reward share would be set "in stone" into the conract.
+It would be possible to run this query beforehand the contract inscription, so the user would be able to change his code accordingly, or to accept the algorithms decision. With inscription, the reward share would be set "in stone" into the contract.
 
 If several indicators chains against each other, using a child would trigger a rewards split cascade: 
 
@@ -84,7 +94,7 @@ then those 25% coming to Remix-1 would be split again, accoring the Remix-1 spli
 
 So the parent (father of both Remix-1 and Remix-2) would receive 45% of those 25%   (calc on your own ..... approx. 12%)
 
-Drawback is that very inscription will cost more gas, as more data needs to be processed and stored. Not sure how this will scale on a large picture (like 5000 vectors to compare against the new one).. something to work out in the ftuture
+Drawback is that very inscription will cost more gas, as more data needs to be processed and stored. Not sure how this will scale on a large picture (like 5000 vectors to compare against the new one).. something to work out in the future
 
 To prevent inscription frontrunning, the dApp adds a ECDSA signature to the contract call, so the message body would be dropped by the contract if someone would try to change the reward address or inscribe himself earlier.
 
@@ -143,7 +153,7 @@ Requires `ollama serve` + `ollama pull qwen3-embedding:0.6b` (or `:4b`).
   - transition to "REMIX of B" only happens around ~95% B content.
 - **Implication for lineage detection**: a remixer bolting a foreign block
   onto a copied script *evades* the whole-vector flag; line-by-line laundering
-  gets *caught*. Whole-vector centered cosine should therefore be paired with
+  gets *caught*. Whole-vector centered coe should therefore be paired with
   chunk-level max-similarity (the heatmap in `compare_two_scripts.ipynb`),
   which still exposes the copied half of a block merge.
 - Scores are **not comparable across models** — each model has its own DB and

@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>TactiX &mdash; Pine Scripts &amp; Semantic Lineage Rewards</title>
+            <style>
+/* From extension vscode.github */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.vscode-dark img[src$=\#gh-light-mode-only],
+.vscode-light img[src$=\#gh-dark-mode-only],
+.vscode-high-contrast:not(.vscode-high-contrast-light) img[src$=\#gh-light-mode-only],
+.vscode-high-contrast-light img[src$=\#gh-dark-mode-only] {
+	display: none;
+}
+
+</style>
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.css">
+<link href="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.css" rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+<style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+        </style>
+        <style>
+.task-list-item {
+    list-style-type: none;
+}
+
+.task-list-item-checkbox {
+    margin-left: -20px;
+    vertical-align: middle;
+    pointer-events: none;
+}
+</style>
+<style>
+:root {
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+}
+
+</style>
+<style>
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+</style>
+<style>
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+</style>
+        
+        </head>
+        <body class="vscode-body vscode-light">
+            <h1 id="tactix--pine-scripts--semantic-lineage-rewards">TactiX — Pine Scripts &amp; Semantic Lineage Rewards</h1>
+<p>This repo holds the Pine Script indicators and strategies that power the
+charting / backtesting engine in the <a href="https://app.tactix-panel.xyz/indicator-map">TactiX Trading Panel</a> —
+plus the experimental toolkit that gives every script a <strong>semantic
+fingerprint</strong>, so remixed code can share its rewards with the original it
+was built on.</p>
+<p><em>Every script embedded as a vector, projected into 2D by classical MDS —
+distance on the map is real embedding distance. Same-family scripts clump
+together; links connect detected remixes and related designs. This is the
+same pipeline behind the live
+<a href="https://app.tactix-panel.xyz/indicator-map">indicator map</a>.</em></p>
+<hr>
+<h2 id="why-rewards">Why rewards</h2>
+<p>It's the work, time, passion and enthusiasm of countless builders that do
+the actual &quot;chart magic&quot;. And it's not just about making charts look good —
+indicators are a high-quality data source that feeds the Jev AI decision
+engine.</p>
+<p>Speaking for myself: if you want to encourage builders to spend time
+building passionately, you NEED to incentivize it. I wouldn't have spent
+months building TactiX without a reward system like Hyperliquid's builder
+codes.</p>
+<p>This is what web3 should be about: code first, applied to real-world
+problems, and rewarded for it — not centralized entities funneling out the
+majority of rewards.</p>
+<p>Most of you probably haven't been in the space from the very beginning, but
+the cypherpunk ethos was always about this: define transparent rules, make
+code stick to those rules, and abandon centralized points of failure. If
+you don't get this, you missed the whole idea of blockchain tech. It's not
+about $$$ (that's what the grifters who came later made of it) — it's about
+data sovereignty and accountability.</p>
+<h2 id="crypto-worlds-fair-colosseum-hackathon">Crypto World's Fair Colosseum Hackathon</h2>
+<p>As our contribution to the Crypto World's Fair Hackathon 2026, we're
+designing the indicator &amp; strategy rewards system as an open-sourced part
+of TactiX. It's the first time we've attempted something like this — an
+interesting journey.</p>
+<p>Keep track of the progress at
+<a href="https://colosseum.com/arena/projects/tactix-trading-panel">colosseum.com/arena/projects/tactix-trading-panel</a>.</p>
+<p>See the live indicator map at <a href="https://app.tactix-panel.xyz/indicator-map">app.tactix-panel.xyz/indicator-map</a>.</p>
+<hr>
+<p><em>Deep-dive with all experiment data: <a href="SEMANTIC_SIMILARITY.html">SEMANTIC_SIMILARITY.md</a> ·
+Raw model-comparison notes: <a href="Model%20comparison.txt">Model comparison.txt</a></em></p>
+<h2 id="the-problem">The problem</h2>
+<p>There is already a big community — including commercial creators — building
+indicators. Today their work ships as:</p>
+<ul>
+<li><strong>open source</strong> (code visible, copiable, no revenue),</li>
+<li><strong>public-closed</strong> (usable by TradingView Pro subscribers, execution runs
+server-side on TradingView, no source),</li>
+<li><strong>private</strong> (pay-per-indicator, also server-side, no source).</li>
+</ul>
+<p>TactiX executes Pine in a <strong>client-side web worker</strong>, so every indicator is
+plain readable code — which is great for users, but makes it trivially easy
+for copycats to re-upload someone else's work and collect the rewards.</p>
+<h2 id="the-invention-semantic-lineage">The invention: semantic lineage</h2>
+<p>Instead of comparing <em>code</em>, we compare <em>meaning</em>. On upload, the script is
+embedded by a local LLM into a semantic vector that is inscribed into the
+indicator database contract alongside the code. Two scripts that <em>do the
+same thing</em> land close together in vector space even if their code looks
+completely different — so a remix can't hide behind a rewrite.</p>
+<pre><code>.pine source
+   │  strip // comments + blank lines      (identity ≠ design — and un-spoofable)
+   │  split into overlapping 4000-char chunks
+   │  ollama.embed per chunk → mean-pool → L2-normalize
+   │  subtract the frozen corpus mean      (removes the &quot;it's Pine code&quot; direction)
+   ▼
+centered unit vector  →  cosine vs every inscribed vector  →  reward split
+</code></pre>
+<p>On inscription the nearest vectors are compared and the split is fixed in
+the contract:</p>
+<table>
+<thead>
+<tr>
+<th>proximity to closest inscribed script</th>
+<th>verdict</th>
+<th>reward flow</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1.000 – 0.950</td>
+<td>remix / derivative</td>
+<td>majority (&gt;50%) to the parent, curve-scaled</td>
+</tr>
+<tr>
+<td>0.950 – 0.900</td>
+<td>partially derived</td>
+<td>minority (&lt;50%) to the parent</td>
+</tr>
+<tr>
+<td>&lt; 0.900</td>
+<td>original</td>
+<td>100% to the author</td>
+</tr>
+</tbody>
+</table>
+<p>A similarity query can be run <strong>before</strong> inscribing, so an author can see
+the verdict, adjust the code, or accept the algorithm's decision — after
+inscription the split is set in stone.</p>
+<p><strong>Split cascade.</strong> When remixes chain, rewards flow backwards through the
+lineage. A trader using Remix-2:</p>
+<pre><code>Remix-2 author        75%
+Remix-1               25%  →  Remix-1 author   55%  (= 13.75% of total)
+                              original parent  45%  (= 11.25% of total)
+</code></pre>
+<p><strong>Anti-frontrunning.</strong> The dApp adds an ECDSA signature to the inscription
+call — if anyone tries to swap the reward address or inscribe first, the
+contract drops the message.</p>
+<p><strong>Known cost:</strong> every inscription gets more expensive as the vector DB
+grows (comparing a new upload against ~5000 stored vectors is an open
+scaling question — see <code>SEMANTIC_SIMILARITY.md</code> §7–8).</p>
+<hr>
+<h2 id="what-the-fingerprinting-actually-sees">What the fingerprinting actually sees</h2>
+<h3 id="centering-is-the-whole-trick">Centering is the whole trick</h3>
+<p>Raw cosine is nearly useless on its own: all Pine embeddings share a large
+common direction (&quot;this is Pine code&quot;), so even unrelated scripts score
+~0.6. Subtracting the frozen corpus mean removes that shared direction and
+leaves only what distinguishes a script.</p>
+<table>
+<thead>
+<tr>
+<th>raw cosine</th>
+<th>centered cosine</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img src="file:////home/ratta/Documents/Projects/TactiX_Trading_Panel/Images/corpus_heatmap_mxbai-embed-large_raw.jpg" alt="raw"></td>
+<td><img src="file:////home/ratta/Documents/Projects/TactiX_Trading_Panel/Images/corpus_heatmap_mxbai-embed-large_centered.jpg" alt="centered"></td>
+</tr>
+</tbody>
+</table>
+<p>Left: everything looks similar. Right: family blocks along the diagonal
+remixes, strategy copies, same-design clusters — pop out. Scripts are
+greedily chain-ordered so families clump. All thresholds below are
+<strong>centered</strong> cosine.</p>
+<h3 id="the-corpus-map">The corpus map</h3>
+<p><img src="file:////home/ratta/Documents/Projects/TactiX_Trading_Panel/Images/corpus_map_mxbai-embed-large_centered.jpg" alt="2D map"></p>
+<p><em>PCA projection of all 26 scripts, labelled, family-clustered, with remix
+(red) and related (gray) links. <code>Images/</code> holds the same heatmap / PCA /
+MDS triple for every model we benchmarked (<code>qwen3-embedding:0.6b</code>, <code>:4b</code>,
+<code>mxbai-embed-large</code>, <code>nomic-embed-text</code>, <code>embeddinggemma</code>) in raw and
+centered variants, plus interactive 3D versions as
+<code>corpus_mds3d_*.html</code> in the repo root.</em></p>
+<h3 id="calibrated-thresholds-qwen3-embedding06b-26-script-corpus-oct-2026">Calibrated thresholds (qwen3-embedding:0.6b, 26-script corpus, Oct 2026)</h3>
+<table>
+<thead>
+<tr>
+<th>centered cosine</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>≥ 0.80</td>
+<td><strong>REMIX</strong> — likely derivative → reward split</td>
+</tr>
+<tr>
+<td>≥ 0.50</td>
+<td><strong>related</strong> — same design family → reported, no split</td>
+</tr>
+<tr>
+<td>&lt; 0.50</td>
+<td>distinct</td>
+</tr>
+</tbody>
+</table>
+<p>Anchors: an indicator vs its own strategy copy scores 0.82–0.86; unrelated
+pairs median ~-0.06, p95 ~0.38.</p>
+<hr>
+<h2 id="experiments--how-we-stress-tested-it">Experiments — how we stress-tested it</h2>
+<p>Every figure below is reproducible — commands at the end. Full data and
+discussion: <strong><a href="SEMANTIC_SIMILARITY.html">SEMANTIC_SIMILARITY.md</a></strong>.</p>
+<h3 id="merge-sweep--can-a-remixer-evade-detection-by-bolting-on-code">Merge sweep — can a remixer evade detection by bolting on code?</h3>
+<p>Two scripts spliced together at 0→100% foreign content
+(<code>08_rsi_divergence.pine</code> × <code>macd_ema.pine</code>), embedded at every step:</p>
+<table>
+<thead>
+<tr>
+<th>appended as a block (<code>concat</code>)</th>
+<th>woven in line-by-line (<code>interleave</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img src="file:////home/ratta/Documents/Projects/TactiX_Trading_Panel/Images/merge_sweep_concat_08_rsi_divergence_vs_macd_ema.jpg" alt="concat"></td>
+<td><img src="file:////home/ratta/Documents/Projects/TactiX_Trading_Panel/Images/merge_sweep_interleave_08_rsi_divergence_vs_macd_ema.jpg" alt="interleave"></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>concat</strong>: just ~5% appended foreign code already pulls the pooled vector
+under the remix bar — the block forms its own chunks and mean-pooling
+weighs chunks equally. <em>Block-appends evade the flag.</em></li>
+<li><strong>interleave</strong>: stays &quot;REMIX of A&quot; up to ~50–55% foreign lines — every
+chunk still looks mostly like A. <em>Line-by-line laundering gets caught.</em></li>
+<li><strong>dead zone</strong>: ~55–80% merges score ~0.5 vs <em>both</em> parents —
+undetectable by whole-vector cosine alone.</li>
+<li>Backstop: chunk-level max-similarity (the heatmap in
+<code>compare_two_scripts.ipynb</code>) still exposes the copied half of a block
+merge — whole-vector scoring flags, chunk-level confirms.</li>
+</ul>
+<h3 id="word-mutation-drift--how-much-does-vocabulary-matter">Word-mutation drift — how much does vocabulary matter?</h3>
+<p>Tokens of script A replaced one-by-one with tokens drawn from B; each
+mutant is re-embedded:</p>
+<p><img src="file:////home/ratta/Documents/Projects/TactiX_Trading_Panel/Images/word_sweep_fourier_08_rsi_divergence_vs_macd_ema.jpg" alt="mutation sweep"></p>
+<p><em>Top: cosine vs A and vs B as tokens are swapped. Bottom: per-dimension
+contribution heatmap — you watch A's dominant embedding dims erode.</em></p>
+<p><img src="file:////home/ratta/Documents/Projects/TactiX_Trading_Panel/Images/word_sweep_trajectory_08_rsi_divergence_vs_macd_ema.jpg" alt="trajectory"></p>
+<p><em>The mutant's path through semantic space (2D PCA, coloured by % replaced).</em></p>
+<p><strong>The skeleton persists.</strong> With <em>every</em> token replaced, the code mutant
+still scores ~0.6 vs A — structure (ordering, syntax rhythm, line shapes)
+is a huge part of a script's embedding. Plagiarism that keeps the skeleton
+is easier to catch than plagiarism that restructures.</p>
+<p>The same experiment on prose (a birria recipe drifting toward a churros
+recipe, <code>Images/word_sweep_fourier.jpg</code>) shows the crossover ~10% earlier —
+code corpora share vocabulary (<code>ta.*</code>, <code>input.*</code>, <code>plot</code>), which compresses
+the range.</p>
+<h3 id="sanity-checks--arbitrary-text">Sanity checks — arbitrary text</h3>
+<p><code>compare_texts_app.py</code> embeds any two texts and saves an overview card to
+<code>comparisons/</code>:</p>
+<table>
+<thead>
+<tr>
+<th>identical (cos 1.000)</th>
+<th>close (cos 0.446)</th>
+<th>distant (cos 0.120)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img src="file:////home/ratta/Documents/Projects/TactiX_Trading_Panel/comparisons/compare_20261006_170153_cos1.000_Same_input_full_match.jpg" alt="same"></td>
+<td><img src="file:////home/ratta/Documents/Projects/TactiX_Trading_Panel/comparisons/compare_20261006_170341_cos0.446_Close_input_close_match.jpg" alt="close"></td>
+<td><img src="file:////home/ratta/Documents/Projects/TactiX_Trading_Panel/comparisons/compare_20261006_170424_cos0.120_distant_input_loose_match.jpg" alt="distant"></td>
+</tr>
+</tbody>
+</table>
+<p>Calibration probes: identical recipe 0.9998 · beef→lamb recipe remix 0.85 ·
+birria vs churros 0.44 · birria vs a Pine script 0.12. The model orders
+these sensibly — but raw cosine never gets very low, which is why centering
+matters.</p>
+<hr>
+<h2 id="reproduce-every-figure">Reproduce every figure</h2>
+<pre><code class="language-bash"><span class="hljs-comment"># setup — Python deps + a local Ollama</span>
+python3 -m venv .venv &amp;&amp; .venv/bin/pip install -r requirements.txt
+ollama serve
+ollama pull qwen3-embedding:0.6b        <span class="hljs-comment"># calibrated model</span>
+<span class="hljs-comment"># ollama pull mxbai-embed-large         # the model behind the live indicator-map</span>
+
+<span class="hljs-comment"># build the vector DB + pairwise report</span>
+.venv/bin/python embed_indicators.py build
+.venv/bin/python embed_indicators.py report
+.venv/bin/python embed_indicators.py check indicator-scripts/macd_ema.pine
+
+<span class="hljs-comment"># corpus figures -&gt; corpus_heatmap / corpus_map / corpus_mds + 3D html, per model DB</span>
+.venv/bin/python corpus_map.py
+
+<span class="hljs-comment"># the sweeps</span>
+.venv/bin/python merge_experiment.py                 <span class="hljs-comment"># concat</span>
+.venv/bin/python merge_experiment.py --interleave
+.venv/bin/python word_sweep_fourier.py --pine \
+    indicator-scripts/08_rsi_divergence.pine indicator-scripts/macd_ema.pine
+
+<span class="hljs-comment"># interactive pair explorer -&gt; http://localhost:8000, cards saved to comparisons/</span>
+.venv/bin/python compare_texts_app.py
+</code></pre>
+<p>Tooling map:</p>
+<table>
+<thead>
+<tr>
+<th>file</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>embed_indicators.py</code></td>
+<td>CLI: <code>build</code> embeds all <code>.pine</code> in <code>indicator-scripts/</code> into a per-model JSON DB; <code>report</code> prints the pairwise matrix; <code>check &lt;file&gt;</code> simulates an upload and finds parents</td>
+</tr>
+<tr>
+<td><code>embed_files.ipynb</code></td>
+<td>interactive companion to <code>build</code> — pick which files to (re)embed per model</td>
+</tr>
+<tr>
+<td><code>compare_two_scripts.ipynb</code></td>
+<td>one pair in depth: verdict vs thresholds, neighbours, chunk-level heatmap, contribution bars</td>
+</tr>
+<tr>
+<td><code>compare_texts.ipynb</code> / <code>compare_texts_app.py</code></td>
+<td>embed any two texts (not just Pine); the <code>.py</code> is a browser UI with templates</td>
+</tr>
+<tr>
+<td><code>merge_experiment.py</code></td>
+<td>merge-sweep: splices two scripts 0–100%, plots similarity vs each parent</td>
+</tr>
+<tr>
+<td><code>word_sweep_fourier.py</code></td>
+<td>token-by-token mutation drift A→B; contribution erosion heatmap + 2D trajectory map</td>
+</tr>
+<tr>
+<td><code>corpus_map.py</code></td>
+<td>all-vs-all: clustered similarity heatmap + labelled PCA/MDS maps + interactive 3D html</td>
+</tr>
+</tbody>
+</table>
+<p>Notes:</p>
+<ul>
+<li>Scores are <strong>per-model</strong> — each model gets its own DB and frozen
+reference mean. Never compare 0.6b numbers to 4b numbers.</li>
+<li>Both qwen3 sizes run on consumer hardware, so an indicator author can
+verify their verdict locally (<code>4b</code> is ~5–6× slower; we default to <code>0.6b</code>).</li>
+<li>Thresholds are only valid against the <em>frozen</em> mean — refreezing on a
+different corpus shifts every score.</li>
+</ul>
+<hr>
+<h2 id="adding-your-own-indicator-or-strategy">Adding your own indicator or strategy</h2>
+<p>We want indicator and strategy authors to earn rewards when traders use
+their work. If you publish a script here, you can attach a payout address
+so a share of usage / subscription fees flows back to you.</p>
+<p><strong>How to opt in:</strong></p>
+<ol>
+<li>
+<p>Add a metadata header at the top of your <code>.pine</code> file:</p>
+<pre><code class="language-pine">// @title: My Awesome Indicator
+// @author: YourName
+// @reward_address: 0xABCDEF1234....
+// @reward_bps: 500   // optional, e.g. 5% of attributable fees
+</code></pre>
+</li>
+<li>
+<p>Open a PR adding your script. Include a short description of what it
+does and a screenshot of it running on a chart.</p>
+</li>
+<li>
+<p>Rewards are distributed periodically based on usage metrics (times
+loaded, backtests run, and live-chart time) tracked by the app.</p>
+</li>
+</ol>
+<p><strong>Guidelines:</strong></p>
+<ul>
+<li>Only submit scripts you wrote or have rights to redistribute. Respect the
+original license (many TradingView scripts are MPL-2.0 — keep the license
+header intact and credit the original author).</li>
+<li>Scripts that are broken, plagiarized without attribution, or malicious
+(e.g. repaint scams presented as signals) will be removed and forfeit
+rewards.</li>
+</ul>
+<p>Questions, or want to propose a different reward split? Open an issue or
+reach out to the maintainers.</p>
+
+            <script async src="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.js"></script>
+            
+        </body>
+        </html>
